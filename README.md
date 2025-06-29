@@ -118,6 +118,22 @@ npx ts-node src/index.ts search -k "augmented reality" \
 npx ts-node test-browser-use.ts
 ```
 
+### 快速模式搜索 ⚡
+```bash
+# 快速模式：跳过详情页提取，适合测试和批量筛选
+npx ts-node src/index.ts search -k "computer vision" \
+  --disable-detail-extraction \
+  --ai
+
+# 功能测试：验证收集逻辑
+npx tsx test-paper-collection.ts "https://dblp.org/search?q=machine+learning"
+
+# 大批量快速收集标题和作者信息
+npx ts-node src/index.ts batch -f keywords.txt \
+  --disable-detail-extraction \
+  --ai-extract-fallback
+```
+
 ### 批量处理
 ```bash
 # 创建关键词文件
@@ -152,6 +168,14 @@ npx ts-node src/index.ts batch -f keywords.txt \
 - `--ai-extract`: 总是使用AI提取 (最高精度)
 - `--ai-extract-fallback`: 仅在常规提取失败时使用AI (推荐)
 - `--ai-extract-enhance`: 使用AI增强所有提取结果 (高质量)
+
+### 详情页提取控制 🚀
+- `--enable-detail-extraction`: 启用详情页内容提取 (默认: true)
+  - 完整模式：访问每个论文详情页，获取完整摘要和精确链接
+  - 适用于正式研究和高质量数据收集
+- `--disable-detail-extraction`: 禁用详情页提取 (快速模式)
+  - 仅使用搜索结果页面信息，速度提升5-10倍
+  - 适用于功能测试和大批量初步筛选
 
 ### Browser-Use 选项 🔥
 - `--browser-use`: 启用Browser-Use智能浏览器操作

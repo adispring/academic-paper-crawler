@@ -132,15 +132,37 @@ export class AcademicPaperCrawler {
         logger.info('result', result);
 
         try {
-          const paperInfo = await this.extractPaperDetail(result, keyword);
-          if (paperInfo) {
+          // 检查是否启用详情页提取
+          const enableDetailExtraction =
+            this.config.aiConfig?.enableDetailExtraction !== false;
+
+          if (enableDetailExtraction) {
+            // 常规模式：提取详情页内容（包括摘要和论文链接）
+            const paperInfo = await this.extractPaperDetail(result, keyword);
+            if (paperInfo) {
+              papers.push(paperInfo);
+              this.status.successful++;
+              logger.info(`成功提取论文信息: ${paperInfo.title}`);
+            }
+          } else {
+            // 快速模式：直接使用搜索结果，不提取详情页
+            logger.info(`🚀 快速模式：跳过详情页提取，直接使用搜索结果信息`);
+            const paperInfo: PaperInfo = {
+              title: result.title,
+              authors: result.authors,
+              abstract: result.abstract || '', // 使用搜索结果中的摘要（如果有）
+              paperLink: result.paperLink || result.detailUrl, // 使用论文链接或详情页链接
+              searchKeyword: keyword,
+              crawledAt: new Date(),
+            };
+
             papers.push(paperInfo);
             this.status.successful++;
-            logger.info(`成功提取论文信息: ${paperInfo.title}`);
+            logger.info(`快速模式成功处理: ${paperInfo.title}`);
           }
         } catch (error) {
           this.status.failed++;
-          const errorMsg = `提取论文详情失败: ${result.title} - ${
+          const errorMsg = `处理论文信息失败: ${result.title} - ${
             (error as Error).message
           }`;
           this.status.errors.push(errorMsg);
@@ -470,7 +492,7 @@ export class AcademicPaperCrawler {
 
     const collectedItems = new Set<string>();
     let scrollCount = 0;
-    const maxScrolls = Math.max(30, Math.ceil(expectedTotal / 4)); // 根据期望总数调整最大滚动次数
+    const maxScrolls = 50; // 固定为50次滚动
     let noNewItemsCount = 0;
     const maxNoNewRetries = scrollConfig.virtualListMaxRetries || 6;
 

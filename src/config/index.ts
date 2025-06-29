@@ -10,7 +10,7 @@ import {
  */
 export const defaultScrollConfig: ScrollConfig = {
   enabled: true,
-  maxScrolls: 20,
+  maxScrolls: 50,
   maxRetries: 3,
   scrollDelay: 2000,
   detectLoadMore: true,
@@ -59,6 +59,8 @@ export const defaultCrawlerConfig: CrawlerConfig = {
     // AI辅助提取配置
     enableExtraction: false,
     extractionMode: 'fallback',
+    // 详情页提取配置
+    enableDetailExtraction: true, // 默认启用详情页提取
     // Browser-Use 配置
     useBrowserUse: false,
     browserUseMode: 'hybrid',
@@ -87,6 +89,8 @@ export const defaultAIConfig: AIConfig = {
   // AI辅助提取配置
   enableExtraction: false,
   extractionMode: 'fallback',
+  // 详情页提取配置
+  enableDetailExtraction: true, // 默认启用详情页提取
   // Browser-Use 配置
   useBrowserUse: false,
   browserUseMode: 'hybrid',

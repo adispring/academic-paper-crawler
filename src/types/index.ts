@@ -91,6 +91,8 @@ export interface AIConfig {
   // AI辅助提取配置
   enableExtraction?: boolean;
   extractionMode?: 'always' | 'fallback' | 'enhance';
+  // 详情页提取配置
+  enableDetailExtraction?: boolean; // 是否提取详情页内容（摘要和论文链接）
   // Browser-Use 配置
   useBrowserUse?: boolean;
   browserUseMode?: 'hybrid' | 'browser-use-only' | 'traditional-only';

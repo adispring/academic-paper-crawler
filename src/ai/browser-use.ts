@@ -128,377 +128,41 @@ export class BrowserUseAgent {
   }
 
   /**
-   * 检测是否为虚拟列表页面
+   * 提取当前页面可见的论文项目
    */
-  private async detectVirtualList(page: Page): Promise<{
-    isVirtualList: boolean;
-    expectedTotal: number;
-    framework?: string;
-  }> {
-    return await page.evaluate(() => {
-      // 检测虚拟列表组件
-      const hasVirtualScroller = !!document.querySelector('virtual-scroller');
-      const hasTotalPadding = !!document.querySelector(
-        '.total-padding, [class*="total-padding"]'
-      );
-      const hasScrollableContent = !!document.querySelector(
-        '.scrollable-content, [class*="scrollable-content"]'
-      );
-
-      // 检测期望总数
-      let expectedTotal = 0;
-      const contentTabs = document.querySelectorAll(
-        '[role="tab"], .tab, .nav-tab, .tab-link'
-      );
-      for (const tab of Array.from(contentTabs)) {
-        const tabText = tab.textContent || '';
-        const contentMatch = tabText.match(/Content\s*\((\d+)\)/);
-        if (contentMatch) {
-          expectedTotal = parseInt(contentMatch[1]);
-          break;
-        }
-      }
-
-      // 检测框架
-      let framework: string | undefined;
-      if (hasVirtualScroller) {
-        framework = 'Angular CDK Virtual Scrolling';
-      }
-
-      const isVirtualList =
-        hasVirtualScroller || (hasTotalPadding && hasScrollableContent);
-
-      return {
-        isVirtualList,
-        expectedTotal,
-        framework,
-      };
-    });
-  }
-
-  /**
-   * 虚拟列表专用的渐进式内容收集
-   */
-  private async handleVirtualListScrolling(
-    page: Page,
-    expectedTotal: number
-  ): Promise<Set<string>> {
-    logger.info(`Browser-Use 开始虚拟列表滚动收集，期望总数: ${expectedTotal}`);
-
-    const collectedItems = new Set<string>();
-    let scrollCount = 0;
-    const maxScrolls = Math.max(25, Math.ceil(expectedTotal / 5)); // 根据期望总数调整滚动次数
-    let noNewItemsCount = 0;
-    const maxNoNewRetries = 5;
-
-    while (scrollCount < maxScrolls && noNewItemsCount < maxNoNewRetries) {
-      // 收集当前可见的项目
-      const currentItems = await page.evaluate(() => {
-        const items: string[] = [];
-
-        // 尝试多种选择器找到论文条目
-        const selectors = [
-          'content-card',
-          '.search-item',
-          '.result-item',
-          '.paper-item',
-          'article',
-          '[class*="card"]',
-        ];
-
-        for (const selector of selectors) {
-          const elements = document.querySelectorAll(selector);
-          if (elements.length > 0) {
-            Array.from(elements).forEach((el) => {
-              // 提取唯一标识符（通常是详情页链接）
-              const detailLink = el.querySelector(
-                'a[href*="content"], a[href*="program"]'
-              );
-              if (detailLink) {
-                const href = (detailLink as HTMLAnchorElement).href;
-                if (href) {
-                  items.push(href);
-                }
-              }
-            });
-            break; // 找到有效选择器就停止
-          }
-        }
-
-        return items;
-      });
-
-      // 检查新收集的项目
-      const newItemsCount = currentItems.filter(
-        (item) => !collectedItems.has(item)
-      ).length;
-
-      if (newItemsCount > 0) {
-        currentItems.forEach((item) => collectedItems.add(item));
-        noNewItemsCount = 0;
-        logger.info(
-          `Browser-Use 虚拟列表收集: 新增 ${newItemsCount} 项，总计 ${collectedItems.size}/${expectedTotal}`
-        );
-      } else {
-        noNewItemsCount++;
-        logger.info(`Browser-Use 虚拟列表: 连续 ${noNewItemsCount} 次无新项目`);
-      }
-
-      // 如果已收集到期望数量的80%以上，可以提前结束
-      if (collectedItems.size >= expectedTotal * 0.8) {
-        logger.info(
-          `Browser-Use 虚拟列表: 已收集 ${
-            collectedItems.size
-          }/${expectedTotal} (${Math.round(
-            (collectedItems.size / expectedTotal) * 100
-          )}%)，提前结束`
-        );
-        break;
-      }
-
-      if (noNewItemsCount >= maxNoNewRetries) {
-        logger.info('Browser-Use 虚拟列表: 已达到最大无新项目重试次数');
-        break;
-      }
-
-      // 执行虚拟列表专用的缓慢滚动
-      const scrollAction = await this.executeAction(
-        page,
-        `这是一个使用虚拟列表的页面（Angular CDK Virtual Scrolling），当前显示${collectedItems.size}/${expectedTotal}个项目。请进行非常缓慢的向下滚动，每次滚动一小段距离，然后等待2-3秒让虚拟列表重新渲染DOM。虚拟列表只显示可见的项目，滚动时DOM会动态更新。`,
-        `虚拟列表页面缓慢滚动 (第${scrollCount + 1}次)`
-      );
-
-      if (!scrollAction) {
-        logger.info('AI滚动失败，使用人类式备用滚动');
-        await this.performVirtualListScroll(page);
-      }
-
-      // 虚拟列表需要更长的等待时间
-      await new Promise((resolve) => setTimeout(resolve, 3500));
-      scrollCount++;
-    }
-
-    logger.info(
-      `Browser-Use 虚拟列表收集完成: ${collectedItems.size}/${expectedTotal} 项，共滚动 ${scrollCount} 次`
-    );
-    return collectedItems;
-  }
-
-  /**
-   * 虚拟列表专用的人类式滚动
-   */
-  private async performVirtualListScroll(page: Page): Promise<void> {
-    logger.info('Browser-Use 执行虚拟列表专用滚动...');
-
-    // 更细致的滚动：每次只滚动1/3视窗高度
-    await page.evaluate(() => {
-      return new Promise<void>((resolve) => {
-        const viewportHeight = window.innerHeight;
-        const scrollDistance = Math.floor(viewportHeight / 3); // 每次滚动1/3视窗
-        const currentY = window.scrollY;
-        const targetY = currentY + scrollDistance;
-        const duration = 800 + Math.random() * 400; // 800-1200ms
-        let startTime: number;
-
-        function animate(currentTime: number) {
-          if (!startTime) startTime = currentTime;
-          const elapsed = currentTime - startTime;
-          const progress = Math.min(elapsed / duration, 1);
-
-          // 使用更平缓的缓动函数
-          const easeOut = 1 - Math.pow(1 - progress, 2);
-          const currentScrollY = currentY + (targetY - currentY) * easeOut;
-          window.scrollTo(0, currentScrollY);
-
-          if (progress < 1) {
-            requestAnimationFrame(animate);
-          } else {
-            resolve();
-          }
-        }
-
-        requestAnimationFrame(animate);
-      });
-    });
-  }
-
-  /**
-   * 处理智能滚动加载，获取所有搜索结果
-   */
-  private async handleSmartScrolling(page: Page): Promise<Set<string> | void> {
-    logger.info('Browser-Use 开始智能滚动加载...');
-
-    // 首先检测是否为虚拟列表
-    const virtualListInfo = await this.detectVirtualList(page);
-
-    if (virtualListInfo.isVirtualList) {
-      logger.info(
-        `检测到虚拟列表 (${virtualListInfo.framework})，期望项目数: ${virtualListInfo.expectedTotal}`
-      );
-      return await this.handleVirtualListScrolling(
-        page,
-        virtualListInfo.expectedTotal
-      );
-    }
-
-    // 传统列表的滚动逻辑（保持原有逻辑）
-    logger.info('检测到传统列表，使用标准滚动策略');
-    let previousResultCount = 0;
-    let currentResultCount = 0;
-    let noNewContentCount = 0;
-    const maxRetries = 3;
-    const maxScrolls = 15;
-    let scrollCount = 0;
-
-    while (scrollCount < maxScrolls && noNewContentCount < maxRetries) {
-      // 获取当前结果数量（通过多种方式检测）
-      currentResultCount = await page.evaluate(() => {
-        const possibleSelectors = [
-          'content-card',
-          '.search-result-item',
-          '.result-item',
-          '.paper-item',
-          '.publication',
-          'article',
-          '[class*="result"]',
-          '[class*="paper"]',
-        ];
-
-        let maxCount = 0;
-        for (const selector of possibleSelectors) {
-          const elements = document.querySelectorAll(selector);
-          maxCount = Math.max(maxCount, elements.length);
-        }
-        return maxCount;
-      });
-
-      logger.info(`Browser-Use 检测到 ${currentResultCount} 个搜索结果`);
-
-      if (currentResultCount === previousResultCount) {
-        noNewContentCount++;
-        logger.info(`Browser-Use 连续 ${noNewContentCount} 次无新内容`);
-
-        if (noNewContentCount >= maxRetries) {
-          logger.info('Browser-Use 智能滚动完成');
-          break;
-        }
-      } else {
-        noNewContentCount = 0;
-      }
-
-      // 使用AI智能操作
-      const scrollAction = await this.executeAction(
-        page,
-        '缓慢向下滚动页面以加载更多搜索结果，模拟人类浏览行为。如果发现"加载更多"或"查看更多"按钮，请点击它',
-        '搜索结果页面人类式滚动加载'
-      );
-
-      if (!scrollAction) {
-        logger.info('AI操作未成功，使用人类式平滑滚动备用方案');
-        await this.performHumanLikeScroll(page);
-      }
-
-      // 等待内容加载
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      previousResultCount = currentResultCount;
-      scrollCount++;
-    }
-
-    // 滚动回顶部
-    await page.evaluate(() => {
-      window.scrollTo(0, 0);
-    });
-
-    logger.info(`Browser-Use 智能滚动完成，共滚动 ${scrollCount} 次`);
-  }
-
-  /**
-   * 使用 Browser-Use 从搜索结果页面提取论文信息
-   */
-  async extractSearchResults(
+  private async extractCurrentVisibleItems(
     page: Page,
     searchKeyword: string
   ): Promise<SearchResultItem[]> {
-    if (!this.config.enableExtraction) {
-      logger.info('Browser-Use 功能未启用');
-      return [];
-    }
-
     try {
-      logger.info('开始使用 Browser-Use 提取搜索结果');
-
-      // 首先进行智能滚动加载
-      const collectedItems = await this.handleSmartScrolling(page);
-
       // 获取页面内容和可见元素信息
       const pageContext = await this.getPageContext(page);
 
-      // 构建虚拟列表收集信息
-      let virtualListInfo = '';
-      if (collectedItems && collectedItems instanceof Set) {
-        virtualListInfo = `
-虚拟列表收集结果：
-- 通过智能滚动已收集到 ${collectedItems.size} 个不同的论文条目
-- 这些条目的详情页链接已收集，请确保提取所有这些论文
-- 虚拟列表意味着DOM中只显示可见的项目，但我们已通过滚动收集了所有项目
-
-收集到的论文详情页链接示例：
-${Array.from(collectedItems).slice(0, 5).join('\n')}
-${collectedItems.size > 5 ? `... 还有 ${collectedItems.size - 5} 个论文` : ''}
-`;
-      }
-
       const prompt = `
-作为智能浏览器代理，请从当前SIGCHI学术会议搜索结果页面提取论文列表信息。
+作为智能浏览器代理，请从当前页面中提取**当前可见的**论文项目信息。
 
 任务目标：
 - 搜索关键词：${searchKeyword}
-- 从SIGCHI会议网站的Content标签页提取所有论文信息
-- 特别注意：Content标签页显示总结果数量，确保提取所有可见的论文
-
-${virtualListInfo}
+- 只提取当前页面中可见的论文项目，不要考虑需要滚动才能看到的项目
+- 这是SIGCHI会议网站的Content标签页
 
 页面上下文：
 ${pageContext}
 
 SIGCHI网站特点：
-1. 这是SIGCHI学术会议网站（programs.sigchi.org）
-2. Content标签页显示论文总数（如"Content (79)"）
-3. 每个论文条目包含：标题、作者、详情链接
-4. 重要：每个论文条目的左上角有一个特殊的链接按钮（显示数字如"1"）
-5. 这个按钮触发覆盖层，包含指向ACM数字图书馆、DOI页面或PDF文件的链接
-
-网站结构分析：
-- 使用Angular框架和虚拟滚动技术
-- 每个论文是<content-card>组件
-- 主要链接：<a class="link-block card-container">指向详情页
-- 外部链接按钮：<link-list-btn><button>触发外部链接覆盖层
-- 虚拟滚动意味着DOM中只渲染可见项目，但我们已通过智能滚动收集了所有项目
-
-链接识别策略：
-- detailUrl：论文标题链接（.link-block.card-container），指向本站详情页
-- paperLink：左上角链接按钮（link-list-btn button），触发外部资源链接
-
-请特别注意寻找：
-- 每个论文条目左上角的<link-list-btn>按钮（显示数字"1"）
-- 按钮的aria-label="Show extra links"属性
-- 点击后可能出现的覆盖层中的外部链接
-- 指向dl.acm.org、doi.org、arxiv.org等外部网站的链接
+1. 每个论文是<content-card>组件
+2. 主要链接：<a class="link-block card-container">指向详情页  
+3. 外部链接按钮：<link-list-btn><button>触发外部链接覆盖层
+4. 论文标题在 .card-data-name .name 中
+5. 作者列表在 person-list 中的 a[person-link] 元素中
 
 提取步骤：
-1. 识别Content标签页中的所有<content-card>论文条目（当前页面中所有可见的）
-2. 对每个论文条目：
-   - 提取论文标题（.card-data-name .name）
-   - 提取作者列表（person-list中的a[person-link]元素）
-   - 找到详情页链接（.link-block.card-container的href）
-   - 识别左上角的<link-list-btn>按钮（可能需要点击获取外部链接）
-
-${
-  collectedItems && collectedItems.size > 0
-    ? `重要提醒：虚拟列表已收集到 ${collectedItems.size} 个论文条目，请确保从当前页面中提取所有可见的论文信息。`
-    : '请从当前页面中提取所有可见的论文信息。'
-}
+1. 识别当前可见的所有<content-card>论文条目
+2. 对每个论文条目提取：
+   - 论文标题（.card-data-name .name）
+   - 作者列表（person-list 中的 a[person-link] 元素）
+   - 详情页链接（.link-block.card-container 的 href）
+   - 外部论文链接（如果能找到的话）
 
 返回JSON格式：
 [
@@ -510,19 +174,11 @@ ${
   }
 ]
 
-重要警告：
-🚨 绝对禁止生成虚假或示例链接！
-🚨 如果没有找到真实的外部论文链接，请省略paperLink字段，不要编造！
-🚨 不要使用占位符如"XXXXXX"、"1234567"等生成虚假DOI！
-
-质量要求：
-- 确保提取Content标签页中的所有<content-card>论文（不要遗漏）
-- 仔细检查每个条目左上角的<link-list-btn>按钮
-- paperLink必须是真实有效的外部资源链接（ACM、DOI、PDF等）
-- detailUrl应该指向SIGCHI网站内的详情页（/facct/2025/program/content/...）
-- 只返回JSON数组，不要包含其他文字说明
-- ⚠️ 如果某个论文的<link-list-btn>按钮无法点击或没有找到真实的外部链接，必须省略paperLink字段
-- ⚠️ 绝对不要生成任何虚假、示例或占位符链接
+重要提醒：
+- 只提取当前页面可见的项目，不要想象或推测其他项目
+- 如果没有找到真实的外部论文链接，请省略paperLink字段
+- 绝对不要生成虚假或示例链接
+- 只返回JSON数组，不要包含其他说明文字
 `;
 
       const response = await this.llm.invoke([
@@ -539,7 +195,7 @@ ${
           .trim();
         extractedResults = JSON.parse(cleanResponse);
       } catch (parseError) {
-        logger.error('Browser-Use 搜索结果解析失败:', parseError);
+        logger.error('当前可见项目解析失败:', parseError);
         return [];
       }
 
@@ -557,13 +213,11 @@ ${
                     .filter((a: string) => a.length > 0)
                 : [],
               detailUrl: this.cleanText(item.detailUrl),
-              // 注意：不从搜索结果页面提取abstract，因为它不在此页面上
             };
 
             // 添加论文链接（如果存在且有效）
             if (item.paperLink && typeof item.paperLink === 'string') {
               const cleanedLink = this.cleanText(item.paperLink);
-              // 验证链接是否是有效的外部链接，不是虚假或示例链接
               if (this.isValidPaperLink(cleanedLink)) {
                 searchResult.paperLink = cleanedLink;
               }
@@ -574,31 +228,397 @@ ${
         }
       }
 
-      logger.info(`Browser-Use 成功提取 ${searchResults.length} 个搜索结果`);
-      logger.info(
-        '提取的搜索结果包含：标题、作者、详情页链接（摘要需从详情页获取）'
-      );
-
-      // 调试信息：显示提取的结果概览
-      searchResults.forEach((result, index) => {
-        logger.info(
-          `  ${index + 1}. 标题: ${result.title.substring(0, 50)}${
-            result.title.length > 50 ? '...' : ''
-          }`
-        );
-        logger.info(`     作者: ${result.authors.join(', ')}`);
-        logger.info(`     详情链接: ${result.detailUrl}`);
-        if (result.paperLink) {
-          logger.info(`     论文链接: ${result.paperLink}`);
-        } else {
-          logger.info(`     论文链接: 未找到（将从详情页获取）`);
-        }
-      });
-
+      logger.info(`提取到 ${searchResults.length} 个当前可见的论文项目`);
       return searchResults;
     } catch (error) {
-      logger.error(`Browser-Use 提取搜索结果失败: ${(error as Error).message}`);
+      logger.error(`提取当前可见项目失败: ${(error as Error).message}`);
       return [];
+    }
+  }
+
+  /**
+   * 模拟人类滚动到下一页内容（每次不超过一屏，避免跳过列表项）
+   */
+  private async scrollToNextPage(page: Page): Promise<boolean> {
+    try {
+      logger.info('模拟人类滚动到下一页（限制在一屏以内）...');
+
+      // 获取滚动前的页面状态
+      const beforeScroll = await page.evaluate(() => ({
+        scrollY: window.scrollY,
+        viewportHeight: window.innerHeight,
+        maxScrollY:
+          Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          ) - window.innerHeight,
+        itemCount: document.querySelectorAll('content-card').length,
+      }));
+
+      // 检查是否已经到达页面底部
+      if (beforeScroll.scrollY >= beforeScroll.maxScrollY * 0.95) {
+        logger.info('已接近页面底部，无法继续滚动');
+        return false;
+      }
+
+      // 执行受控的人类式滚动（不超过一屏）
+      await this.performControlledScroll(page, beforeScroll.viewportHeight);
+
+      // 等待内容加载和DOM更新
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // 获取滚动后的页面状态
+      const afterScroll = await page.evaluate(() => ({
+        scrollY: window.scrollY,
+        maxScrollY:
+          Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          ) - window.innerHeight,
+        itemCount: document.querySelectorAll('content-card').length,
+      }));
+
+      // 计算实际滚动距离
+      const actualScrollDistance = afterScroll.scrollY - beforeScroll.scrollY;
+
+      // 检查是否有效滚动
+      if (actualScrollDistance > 10) {
+        // 至少滚动10px才算有效
+        logger.info(
+          `滚动成功，距离: ${Math.round(actualScrollDistance)}px (${Math.round(
+            (actualScrollDistance / beforeScroll.viewportHeight) * 100
+          )}% 屏高)，项目数量：${beforeScroll.itemCount} -> ${
+            afterScroll.itemCount
+          }`
+        );
+        return true;
+      } else {
+        logger.info('滚动距离太小或未滚动，可能已到达底部');
+        return false;
+      }
+    } catch (error) {
+      logger.error(`滚动到下一页失败: ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 执行受控的人类式滚动（限制在一屏以内，避免跳过内容）
+   */
+  private async performControlledScroll(
+    page: Page,
+    viewportHeight: number
+  ): Promise<void> {
+    logger.info('执行受控滚动，限制在一屏高度以内...');
+
+    await page.evaluate((maxScrollDistance) => {
+      return new Promise<void>((resolve) => {
+        const startY = window.scrollY;
+        const maxY =
+          Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          ) - window.innerHeight;
+
+        // 滚动距离限制为视窗高度的60-80%，避免跳过内容
+        const scrollPercentage = 0.6 + Math.random() * 0.2; // 60%-80%
+        const targetScrollDistance = Math.floor(
+          maxScrollDistance * scrollPercentage
+        );
+
+        // 确保不会滚动超出页面范围
+        const targetY = Math.min(startY + targetScrollDistance, maxY);
+        const actualScrollDistance = targetY - startY;
+
+        if (actualScrollDistance <= 0) {
+          resolve();
+          return;
+        }
+
+        console.log(
+          `受控滚动：从 ${startY}px 到 ${targetY}px，距离 ${actualScrollDistance}px (${Math.round(
+            (actualScrollDistance / maxScrollDistance) * 100
+          )}% 屏高)`
+        );
+
+        // 使用平滑动画滚动
+        const duration = 800 + Math.random() * 400; // 800-1200ms
+        let startTime: number;
+
+        function animate(currentTime: number) {
+          if (!startTime) startTime = currentTime;
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          // 使用缓动函数模拟人类滚动
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          const currentY = startY + actualScrollDistance * easeOut;
+
+          window.scrollTo(0, currentY);
+
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            resolve();
+          }
+        }
+
+        requestAnimationFrame(animate);
+      });
+    }, viewportHeight);
+  }
+
+  /**
+   * 使用 Browser-Use 从搜索结果页面提取论文信息
+   * 采用逐步处理的方式：处理当前可见项目 -> 滚动 -> 处理新项目 -> 重复
+   */
+  async extractSearchResults(
+    page: Page,
+    searchKeyword: string
+  ): Promise<SearchResultItem[]> {
+    if (!this.config.enableExtraction) {
+      logger.info('Browser-Use 功能未启用');
+      return [];
+    }
+
+    try {
+      logger.info('开始使用 Browser-Use 逐步滚动收集搜索结果');
+
+      const allResults: SearchResultItem[] = [];
+      const processedUrls = new Set<string>();
+      let noNewItemsCount = 0;
+      const maxRetries = 3;
+
+      // 设置最大滚动次数为固定值
+      const expectedTotal = await this.getExpectedTotalCount(page);
+      const maxScrolls = 50; // 固定为50次滚动
+      let scrollCount = 0;
+
+      logger.info(
+        `📊 页面预期包含 ${expectedTotal} 篇文章，设置最大滚动次数: ${maxScrolls}`
+      );
+
+      // 首先滚动到页面顶部确保从头开始
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // 先收集初始页面的内容
+      logger.info(`\n=== 初始页面收集 ===`);
+      await this.collectCurrentPageItems(
+        page,
+        searchKeyword,
+        allResults,
+        processedUrls
+      );
+      logger.info(`初始页面收集完成，共 ${allResults.length} 个项目`);
+
+      // 开始滚动循环
+      while (scrollCount < maxScrolls && noNewItemsCount < maxRetries) {
+        scrollCount++;
+        logger.info(`\n=== 第 ${scrollCount} 次滚动 ===`);
+
+        // 1. 执行滚动操作（限制在一屏以内）
+        logger.info('🔄 开始受控滚动（不超过一屏，避免跳过内容）...');
+        const hasMoreContent = await this.scrollToNextPage(page);
+
+        if (!hasMoreContent) {
+          logger.info('❌ 无法滚动获取更多内容，停止处理');
+          break;
+        }
+
+        logger.info('✅ 受控滚动完成，页面已安全移动到新位置');
+
+        // 2. 滚动后停顿，等待页面稳定和内容加载
+        logger.info('⏱️ 停顿等待页面稳定...');
+        await new Promise((resolve) => setTimeout(resolve, 2500)); // 增加等待时间确保内容完全加载
+
+        // 3. 收集当前页面的所有项目
+        logger.info('📋 开始收集当前页面项目...');
+        const beforeCount = allResults.length;
+        await this.collectCurrentPageItems(
+          page,
+          searchKeyword,
+          allResults,
+          processedUrls
+        );
+        const afterCount = allResults.length;
+        const newItemsFound = afterCount - beforeCount;
+
+        // 4. 分析收集结果
+        if (newItemsFound > 0) {
+          noNewItemsCount = 0;
+          logger.info(
+            `✅ 收集完成！新增 ${newItemsFound} 个项目，总计 ${allResults.length} 个`
+          );
+        } else {
+          noNewItemsCount++;
+          logger.info(
+            `⚠️ 收集完成，但无新项目（连续 ${noNewItemsCount} 次无新内容）`
+          );
+        }
+
+        // 5. 检查是否需要继续
+        if (noNewItemsCount >= maxRetries) {
+          logger.info('📝 达到最大无新项目重试次数，停止滚动收集');
+          break;
+        }
+
+        // 简短等待后继续下一轮
+        logger.info('💤 准备进行下一轮滚动...');
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      // 滚动回顶部
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+
+      logger.info(`\n=== 📊 收集统计 ===`);
+      logger.info(`预期文章数: ${expectedTotal}`);
+      logger.info(`实际收集数: ${allResults.length}`);
+      logger.info(
+        `收集进度: ${Math.round((allResults.length / expectedTotal) * 100)}%`
+      );
+      logger.info(`总共执行了 ${scrollCount} 次滚动`);
+
+      if (scrollCount >= maxScrolls) {
+        logger.warn(
+          `⚠️ 达到最大滚动次数限制 (${maxScrolls})，可能未收集完所有文章`
+        );
+      }
+
+      if (allResults.length < expectedTotal * 0.9) {
+        logger.warn(
+          `⚠️ 收集数量可能不完整，预期 ${expectedTotal}，实际 ${allResults.length}`
+        );
+      } else {
+        logger.info(`✅ 收集完成度良好！`);
+      }
+
+      // 显示最终收集结果概览
+      if (allResults.length > 0) {
+        logger.info(`\n=== 📚 收集结果概览 ===`);
+        allResults.forEach((result, index) => {
+          logger.info(
+            `${index + 1}. ${result.title.substring(0, 80)}${
+              result.title.length > 80 ? '...' : ''
+            }`
+          );
+          logger.info(`   👥 作者: ${result.authors.join(', ')}`);
+          logger.info(`   🔗 链接: ${result.detailUrl}`);
+          if (result.paperLink) {
+            logger.info(`   📄 论文: ${result.paperLink}`);
+          }
+        });
+      }
+
+      return allResults;
+    } catch (error) {
+      logger.error(`Browser-Use 逐步滚动收集失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 获取页面预期的文章总数（从Content标签或其他指标中获取）
+   */
+  private async getExpectedTotalCount(page: Page): Promise<number> {
+    try {
+      const expectedCount = await page.evaluate(() => {
+        // 尝试从Content标签页获取总数，如 "Content (79)"
+        const contentTabs = document.querySelectorAll(
+          '[role="tab"], .tab, .nav-tab, .tab-link, .content-tab'
+        );
+
+        for (const tab of Array.from(contentTabs)) {
+          const tabText = tab.textContent || '';
+          const contentMatch = tabText.match(/Content\s*\((\d+)\)/i);
+          if (contentMatch) {
+            return parseInt(contentMatch[1]);
+          }
+        }
+
+        // 尝试从页面标题或其他地方获取总数信息
+        const titleElement = document.querySelector('h1, .title, .page-title');
+        if (titleElement) {
+          const titleText = titleElement.textContent || '';
+          const titleMatch = titleText.match(
+            /(\d+)\s*(?:papers|articles|results)/i
+          );
+          if (titleMatch) {
+            return parseInt(titleMatch[1]);
+          }
+        }
+
+        // 尝试从结果计数器获取
+        const countElements = document.querySelectorAll(
+          '.count, .total, .results-count'
+        );
+        for (const element of Array.from(countElements)) {
+          const countText = element.textContent || '';
+          const countMatch = countText.match(/(\d+)/);
+          if (countMatch && parseInt(countMatch[1]) > 10) {
+            // 过滤掉太小的数字
+            return parseInt(countMatch[1]);
+          }
+        }
+
+        // 如果都找不到，返回默认值
+        return 50; // 默认假设50篇文章
+      });
+
+      logger.info(`🎯 检测到页面预期包含 ${expectedCount} 篇文章`);
+      return expectedCount;
+    } catch (error) {
+      logger.warn(
+        `获取预期文章总数失败，使用默认值: ${(error as Error).message}`
+      );
+      return 50; // 默认值
+    }
+  }
+
+  /**
+   * 收集当前页面的所有项目（停顿后的完整收集）
+   */
+  private async collectCurrentPageItems(
+    page: Page,
+    searchKeyword: string,
+    allResults: SearchResultItem[],
+    processedUrls: Set<string>
+  ): Promise<void> {
+    try {
+      // 提取当前页面可见的项目
+      const currentResults = await this.extractCurrentVisibleItems(
+        page,
+        searchKeyword
+      );
+
+      // 过滤掉已处理的项目
+      const newResults = currentResults.filter(
+        (item) => !processedUrls.has(item.detailUrl)
+      );
+
+      if (newResults.length > 0) {
+        // 添加新项目到结果集
+        allResults.push(...newResults);
+        newResults.forEach((item) => processedUrls.add(item.detailUrl));
+
+        logger.info(`🆕 发现 ${newResults.length} 个新项目:`);
+        // 显示新收集的项目标题
+        newResults.forEach((item, index) => {
+          logger.info(
+            `   ${index + 1}. ${item.title.substring(0, 70)}${
+              item.title.length > 70 ? '...' : ''
+            }`
+          );
+        });
+      } else {
+        logger.info(`🔍 当前页面无新项目（可能是重复项目或页面未变化）`);
+      }
+    } catch (error) {
+      logger.error(`收集当前页面项目失败: ${(error as Error).message}`);
     }
   }
 

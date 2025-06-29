@@ -45,6 +45,11 @@ class PaperCrawlerApp {
       .option('--ai-extract', '启用AI辅助信息提取（提高提取准确性）')
       .option('--ai-extract-fallback', '仅在常规提取失败时使用AI辅助提取')
       .option('--ai-extract-enhance', '使用AI增强所有提取结果的质量')
+      .option('--enable-detail-extraction', '启用详情页提取（默认开启）')
+      .option(
+        '--disable-detail-extraction',
+        '禁用详情页提取，仅使用搜索结果信息（快速模式）'
+      )
       .option('--browser-use', '启用Browser-Use智能浏览器操作')
       .option(
         '--browser-use-mode <mode>',
@@ -107,6 +112,11 @@ class PaperCrawlerApp {
       .option('--ai-extract', '启用AI辅助信息提取（提高提取准确性）')
       .option('--ai-extract-fallback', '仅在常规提取失败时使用AI辅助提取')
       .option('--ai-extract-enhance', '使用AI增强所有提取结果的质量')
+      .option('--enable-detail-extraction', '启用详情页提取（默认开启）')
+      .option(
+        '--disable-detail-extraction',
+        '禁用详情页提取，仅使用搜索结果信息（快速模式）'
+      )
       .option('--browser-use', '启用Browser-Use智能浏览器操作')
       .option(
         '--browser-use-mode <mode>',
@@ -211,6 +221,10 @@ class PaperCrawlerApp {
             : options.aiExtractFallback
             ? 'fallback'
             : 'always',
+          // 详情页提取配置
+          enableDetailExtraction: options.disableDetailExtraction
+            ? false
+            : options.enableDetailExtraction !== false,
           // Browser-Use 配置
           useBrowserUse: options.browserUse || false,
           browserUseMode: options.browserUseMode || 'hybrid',
@@ -277,6 +291,15 @@ class PaperCrawlerApp {
               '仅翻译非中文内容'
             }`
           );
+        }
+
+        // 详情页提取功能状态
+        if (config.aiConfig.enableDetailExtraction) {
+          logger.info('✓ 详情页提取已启用 (完整模式)');
+          logger.info('  将访问每个论文详情页获取完整摘要和精确链接');
+        } else {
+          logger.info('⚡ 详情页提取已禁用 (快速模式)');
+          logger.info('  仅使用搜索结果信息，速度提升5-10倍');
         }
       }
 
@@ -394,6 +417,10 @@ class PaperCrawlerApp {
             : options.aiExtractFallback
             ? 'fallback'
             : 'always',
+          // 详情页提取配置
+          enableDetailExtraction: options.disableDetailExtraction
+            ? false
+            : options.enableDetailExtraction !== false,
           // Browser-Use 配置
           useBrowserUse: options.browserUse || false,
           browserUseMode: options.browserUseMode || 'hybrid',
@@ -460,6 +487,15 @@ class PaperCrawlerApp {
           logger.info(
             `使用自定义 API 基础 URL: ${process.env.OPENAI_BASE_URL}`
           );
+        }
+
+        // 详情页提取功能状态
+        if (config.aiConfig.enableDetailExtraction) {
+          logger.info('✓ 详情页提取已启用 (完整模式)');
+          logger.info('  将访问每个论文详情页获取完整摘要和精确链接');
+        } else {
+          logger.info('⚡ 详情页提取已禁用 (快速模式)');
+          logger.info('  仅使用搜索结果信息，速度提升5-10倍');
         }
       }
 
@@ -580,7 +616,7 @@ class PaperCrawlerApp {
 
     return {
       enabled: !options.noScroll,
-      maxScrolls: parseInt(options.maxScrolls || '20'),
+      maxScrolls: parseInt(options.maxScrolls || '50'),
       maxRetries: 3,
       scrollDelay: parseInt(options.scrollDelay || '2000'),
       detectLoadMore: true,
