@@ -6,7 +6,7 @@ import { Command } from 'commander';
 // 加载环境变量
 dotenv.config();
 import { AcademicPaperCrawler } from './crawler';
-import { CrawlerConfig } from './types';
+import { CrawlerConfig, ScrollConfig } from './types';
 import { logger } from './utils';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -64,6 +64,21 @@ class PaperCrawlerApp {
         '翻译模式：always(总是翻译), non-chinese-only(仅翻译非中文), disabled(禁用)',
         'non-chinese-only'
       )
+      .option('--no-scroll', '禁用滚动加载功能（仅获取首屏结果）')
+      .option('--max-scrolls <count>', '最大滚动次数', '20')
+      .option('--scroll-delay <ms>', '滚动延迟时间(毫秒)', '2000')
+      .option('--no-human-scroll', '禁用人类式滚动，使用传统快速滚动')
+      .option(
+        '--scroll-steps <min-max>',
+        '滚动步数范围，格式: min-max (如: 3-6)',
+        '3-6'
+      )
+      .option(
+        '--step-delay <min-max>',
+        '步骤延迟范围(毫秒)，格式: min-max (如: 800-1800)',
+        '800-1800'
+      )
+      .option('--backscroll-chance <probability>', '回看概率 (0-1)', '0.3')
       .action(async (options) => {
         await this.handleSearchCommand(options);
       });
@@ -102,6 +117,21 @@ class PaperCrawlerApp {
         '翻译模式：always(总是翻译), non-chinese-only(仅翻译非中文), disabled(禁用)',
         'non-chinese-only'
       )
+      .option('--no-scroll', '禁用滚动加载功能（仅获取首屏结果）')
+      .option('--max-scrolls <count>', '最大滚动次数', '20')
+      .option('--scroll-delay <ms>', '滚动延迟时间(毫秒)', '2000')
+      .option('--no-human-scroll', '禁用人类式滚动，使用传统快速滚动')
+      .option(
+        '--scroll-steps <min-max>',
+        '滚动步数范围，格式: min-max (如: 3-6)',
+        '3-6'
+      )
+      .option(
+        '--step-delay <min-max>',
+        '步骤延迟范围(毫秒)，格式: min-max (如: 800-1800)',
+        '800-1800'
+      )
+      .option('--backscroll-chance <probability>', '回看概率 (0-1)', '0.3')
       .action(async (options) => {
         await this.handleBatchCommand(options);
       });
@@ -122,6 +152,8 @@ class PaperCrawlerApp {
         timeout: parseInt(options.timeout),
         maxRetries: parseInt(options.maxRetries),
         retryDelay: parseInt(options.retryDelay),
+        // 滚动配置
+        scrollConfig: this.parseScrollConfig(options),
       };
 
       // 配置AI选项
@@ -229,6 +261,15 @@ class PaperCrawlerApp {
         }
       }
 
+      // 显示滚动配置状态
+      if (config.scrollConfig?.enabled) {
+        logger.info('✓ 分页滚动加载已启用');
+        logger.info(`最大滚动次数: ${config.scrollConfig.maxScrolls}`);
+        logger.info(`滚动延迟: ${config.scrollConfig.scrollDelay}ms`);
+      } else {
+        logger.info('⚠ 分页滚动加载已禁用（仅获取首屏结果）');
+      }
+
       const crawler = new AcademicPaperCrawler(config);
 
       try {
@@ -275,6 +316,8 @@ class PaperCrawlerApp {
         outputPath: path.resolve(options.output),
         outputFormat: options.format,
         headless: this.parseBoolean(options.headless),
+        // 滚动配置
+        scrollConfig: this.parseScrollConfig(options),
       };
 
       // 配置AI选项（与search命令相同）
@@ -382,6 +425,15 @@ class PaperCrawlerApp {
         }
       }
 
+      // 显示滚动配置状态
+      if (config.scrollConfig?.enabled) {
+        logger.info('✓ 分页滚动加载已启用');
+        logger.info(`最大滚动次数: ${config.scrollConfig.maxScrolls}`);
+        logger.info(`滚动延迟: ${config.scrollConfig.scrollDelay}ms`);
+      } else {
+        logger.info('⚠ 分页滚动加载已禁用（仅获取首屏结果）');
+      }
+
       const crawler = new AcademicPaperCrawler(config);
       const delay = parseInt(options.delay);
       let totalPapers = 0;
@@ -448,6 +500,43 @@ class PaperCrawlerApp {
     }
 
     console.log(`\n结果已保存到: ${outputFile}`);
+  }
+
+  /**
+   * 解析滚动配置
+   */
+  private parseScrollConfig(options: any): ScrollConfig {
+    // 解析步数范围
+    const parseRange = (
+      rangeStr: string,
+      defaultMin: number,
+      defaultMax: number
+    ) => {
+      const parts = rangeStr.split('-').map((s) => parseInt(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { min: parts[0], max: parts[1] };
+      }
+      return { min: defaultMin, max: defaultMax };
+    };
+
+    const scrollSteps = parseRange(options.scrollSteps || '3-6', 3, 6);
+    const stepDelay = parseRange(options.stepDelay || '800-1800', 800, 1800);
+
+    return {
+      enabled: !options.noScroll,
+      maxScrolls: parseInt(options.maxScrolls || '20'),
+      maxRetries: 3,
+      scrollDelay: parseInt(options.scrollDelay || '2000'),
+      detectLoadMore: true,
+      // 人类式滚动配置
+      humanLike: !options.noHumanScroll, // --no-human-scroll 选项
+      scrollStepsMin: scrollSteps.min,
+      scrollStepsMax: scrollSteps.max,
+      stepDelayMin: stepDelay.min,
+      stepDelayMax: stepDelay.max,
+      randomBackscroll: true, // 默认启用
+      backscrollChance: parseFloat(options.backscrollChance || '0.3'),
+    };
   }
 
   /**

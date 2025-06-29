@@ -182,12 +182,446 @@ export class AcademicPaperCrawler {
   }
 
   /**
+   * 模拟人类式平滑滚动行为
+   */
+  private async performHumanLikeScroll(
+    page: Page,
+    mode: 'normal' | 'aggressive' = 'normal'
+  ): Promise<void> {
+    const scrollConfig = this.config.scrollConfig;
+
+    if (!scrollConfig?.humanLike) {
+      // 如果没有启用人类式滚动，使用简单滚动
+      logger.info('人类式滚动已禁用，使用传统滚动方式');
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      return;
+    }
+
+    // 根据模式和配置确定滚动参数
+    const scrollStepsMin = scrollConfig.scrollStepsMin || 3;
+    const scrollStepsMax = scrollConfig.scrollStepsMax || 6;
+    const stepDelayMin = scrollConfig.stepDelayMin || 800;
+    const stepDelayMax = scrollConfig.stepDelayMax || 1800;
+    const backscrollChance = scrollConfig.backscrollChance || 0.3;
+
+    const scrollSteps =
+      mode === 'aggressive'
+        ? Math.max(scrollStepsMin, scrollStepsMax)
+        : Math.floor(Math.random() * (scrollStepsMax - scrollStepsMin + 1)) +
+          scrollStepsMin;
+
+    logger.info(
+      `开始人类式${
+        mode === 'aggressive' ? '深度' : '常规'
+      }滚动，共${scrollSteps}步`
+    );
+
+    // 获取当前页面高度和视窗高度
+    const { viewportHeight, totalHeight } = await page.evaluate(() => ({
+      viewportHeight: window.innerHeight,
+      totalHeight: Math.max(
+        document.body.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.clientHeight,
+        document.documentElement.scrollHeight,
+        document.documentElement.offsetHeight
+      ),
+    }));
+
+    const currentScrollY = await page.evaluate(() => window.scrollY);
+    const remainingHeight = totalHeight - currentScrollY - viewportHeight;
+
+    if (remainingHeight <= 0) {
+      logger.info('已到达页面底部，无需继续滚动');
+      return;
+    }
+
+    // 计算每步滚动的距离
+    const baseScrollDistance = Math.min(
+      viewportHeight * 0.6,
+      remainingHeight / scrollSteps
+    );
+
+    for (let i = 0; i < scrollSteps; i++) {
+      // 添加随机性，模拟人类不均匀的滚动行为
+      const randomFactor = 0.7 + Math.random() * 0.6; // 0.7 到 1.3 的随机因子
+      const scrollDistance = Math.floor(baseScrollDistance * randomFactor);
+
+      // 模拟人类的滚动行为 - 平滑滚动而不是瞬间跳跃
+      await page.evaluate((distance) => {
+        return new Promise<void>((resolve) => {
+          const startY = window.scrollY;
+          const targetY = startY + distance;
+          const duration = 300 + Math.random() * 400; // 300-700ms的滚动时间
+          let startTime: number;
+
+          function animateScroll(currentTime: number) {
+            if (!startTime) startTime = currentTime;
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            // 使用缓动函数模拟自然滚动
+            const easeInOutQuad =
+              progress < 0.5
+                ? 2 * progress * progress
+                : -1 + (4 - 2 * progress) * progress;
+
+            const currentY = startY + (targetY - startY) * easeInOutQuad;
+            window.scrollTo(0, currentY);
+
+            if (progress < 1) {
+              requestAnimationFrame(animateScroll);
+            } else {
+              resolve();
+            }
+          }
+
+          requestAnimationFrame(animateScroll);
+        });
+      }, scrollDistance);
+
+      // 模拟人类在滚动后的停顿时间
+      const pauseTime =
+        stepDelayMin + Math.random() * (stepDelayMax - stepDelayMin); // 随机停顿时间
+      logger.info(
+        `滚动步骤 ${i + 1}/${scrollSteps}，停顿 ${Math.round(pauseTime)}ms`
+      );
+      await sleep(pauseTime);
+
+      // 检查是否有新内容加载指示器
+      const hasLoadingIndicator = await page.evaluate(() => {
+        const indicators = [
+          '.loading',
+          '.spinner',
+          '[class*="loading"]',
+          '[class*="spinner"]',
+          '.load-more',
+          '[class*="load"]',
+          '.btn-more',
+        ];
+
+        return indicators.some((selector) => {
+          const el = document.querySelector(selector) as HTMLElement;
+          return el && el.offsetParent !== null;
+        });
+      });
+
+      if (hasLoadingIndicator) {
+        logger.info('检测到加载指示器，额外等待内容加载...');
+        await sleep(1500 + Math.random() * 1000); // 1.5-2.5秒额外等待
+      }
+
+      // 模拟人类查看内容的行为 - 偶尔向上滚动一点点
+      if (
+        i > 0 &&
+        scrollConfig.randomBackscroll &&
+        Math.random() < backscrollChance
+      ) {
+        logger.info('模拟人类回看行为，微向上滚动');
+        await page.evaluate(() => {
+          const backScroll = 50 + Math.random() * 100; // 50-150px
+          window.scrollBy(0, -backScroll);
+        });
+        await sleep(300 + Math.random() * 200);
+
+        // 然后继续向下
+        await page.evaluate(() => {
+          const forwardScroll = 80 + Math.random() * 120; // 80-200px
+          window.scrollBy(0, forwardScroll);
+        });
+        await sleep(200);
+      }
+    }
+
+    // 最后尝试滚动到真正的底部，但依然保持平滑
+    logger.info('完成渐进滚动，尝试到达页面底部...');
+    await page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        const startY = window.scrollY;
+        const targetY =
+          Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          ) - window.innerHeight;
+
+        if (targetY <= startY) {
+          resolve();
+          return;
+        }
+
+        const duration = 1000 + Math.random() * 500; // 1-1.5秒滚动到底部
+        let startTime: number;
+
+        function animateScroll(currentTime: number) {
+          if (!startTime) startTime = currentTime;
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          const easeOutQuad = 1 - (1 - progress) * (1 - progress);
+          const currentY = startY + (targetY - startY) * easeOutQuad;
+          window.scrollTo(0, currentY);
+
+          if (progress < 1) {
+            requestAnimationFrame(animateScroll);
+          } else {
+            resolve();
+          }
+        }
+
+        requestAnimationFrame(animateScroll);
+      });
+    });
+
+    // 到底后稍作停留
+    await sleep(800 + Math.random() * 400);
+    logger.info('人类式滚动完成');
+  }
+
+  /**
+   * 处理无限滚动加载，获取所有搜索结果
+   */
+  private async loadAllSearchResults(page: Page): Promise<void> {
+    const scrollConfig = this.config.scrollConfig;
+
+    if (!scrollConfig?.enabled) {
+      logger.info('滚动加载已禁用，跳过');
+      return;
+    }
+
+    logger.info('开始处理分页滚动加载...');
+
+    let previousResultCount = 0;
+    let currentResultCount = 0;
+    let noNewContentCount = 0;
+    const maxRetries = scrollConfig.maxRetries;
+    const maxScrolls = scrollConfig.maxScrolls;
+    let scrollCount = 0;
+
+    while (scrollCount < maxScrolls && noNewContentCount < maxRetries) {
+      // 获取当前结果数量 - 使用多种方式检测
+      const detectionResult = await page.evaluate((selectors) => {
+        // 方法1: 尝试从Content标签的数字获取总数
+        let expectedTotal = 0;
+        const contentTabs = Array.from(
+          document.querySelectorAll('[role="tab"], .tab, .nav-tab, .tab-link')
+        );
+        for (const tab of contentTabs) {
+          const tabText = tab.textContent || '';
+          const contentMatch = tabText.match(/Content\s*\((\d+)\)/);
+          if (contentMatch) {
+            expectedTotal = parseInt(contentMatch[1]);
+            console.log(`从Content标签检测到总数: ${expectedTotal}`);
+            break;
+          }
+        }
+
+        // 方法2: 更精确的搜索结果检测
+        let maxCount = 0;
+        const preciseSelectors = [
+          // SIGCHI特定选择器
+          '.tab-content [class*="row"] > div',
+          '.content-panel > div',
+          '[role="tabpanel"] > div',
+          // 通用论文条目选择器
+          'article',
+          '.paper-item',
+          '.content-item',
+          '.result-item',
+          '.search-result',
+          '.publication',
+          // 包含论文标题的div
+          'div:has(h3)',
+          'div:has(h4)',
+          'div:has(h5)',
+          'div:has(.title)',
+          'div:has(strong)',
+        ];
+
+        for (const selector of preciseSelectors) {
+          try {
+            const elements = document.querySelectorAll(selector);
+            const validElements = Array.from(elements).filter((el) => {
+              const text = el.textContent || '';
+              const hasTitle = text.length > 20; // 有足够的文本内容
+              const hasAuthors = /[A-Z][a-z]+\s+[A-Z]/.test(text); // 包含人名模式
+              const isVisible = window.getComputedStyle(el).display !== 'none';
+              return hasTitle && hasAuthors && isVisible;
+            });
+
+            if (validElements.length > maxCount) {
+              maxCount = validElements.length;
+              console.log(
+                `选择器 "${selector}" 找到 ${validElements.length} 个有效论文条目`
+              );
+            }
+          } catch (e) {
+            // 忽略无效选择器
+          }
+        }
+
+        // 方法3: 直接检测包含论文信息的div
+        const allDivs = Array.from(document.querySelectorAll('div'));
+        let paperDivs = 0;
+        for (const div of allDivs) {
+          const text = div.textContent || '';
+          const hasLink = div.querySelector('a[href*="content"]');
+          const hasTitlePattern = /^[A-Z].{20,}$/m.test(text.trim());
+          const hasAuthorPattern = /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(text);
+
+          if (
+            hasLink &&
+            hasTitlePattern &&
+            hasAuthorPattern &&
+            text.length > 50 &&
+            text.length < 1000
+          ) {
+            paperDivs++;
+          }
+        }
+
+        if (paperDivs > maxCount) {
+          maxCount = paperDivs;
+          console.log(`通过内容分析找到 ${paperDivs} 个论文条目`);
+        }
+
+        console.log(`期望总数: ${expectedTotal}, 实际检测: ${maxCount}`);
+        return { expectedTotal, actualCount: maxCount };
+      }, selectors);
+
+      currentResultCount = detectionResult.actualCount;
+      const expectedTotal = detectionResult.expectedTotal;
+
+      logger.info(
+        `当前已加载 ${currentResultCount} 个搜索结果（期望 ${expectedTotal} 个，滚动第 ${
+          scrollCount + 1
+        } 次）`
+      );
+
+      // 如果结果数量没有增加，说明可能已经加载完成
+      if (currentResultCount === previousResultCount) {
+        noNewContentCount++;
+        logger.info(`连续 ${noNewContentCount} 次无新内容加载`);
+
+        if (noNewContentCount >= maxRetries) {
+          logger.info('已达到最大重试次数，停止滚动加载');
+          break;
+        }
+      } else {
+        noNewContentCount = 0; // 重置计数器
+      }
+
+      // 使用人类式平滑滚动策略
+      if (expectedTotal > 0 && currentResultCount < expectedTotal * 0.8) {
+        logger.info(`检测到大量未加载内容，使用人类式深度滚动策略`);
+        await this.performHumanLikeScroll(page, 'aggressive');
+      } else {
+        logger.info(`执行人类式常规滚动`);
+        await this.performHumanLikeScroll(page, 'normal');
+      }
+
+      // 等待新内容加载和处理
+      await sleep(scrollConfig.scrollDelay);
+
+      // 检查是否有加载指示器
+      const isLoading = await page.evaluate((selectors) => {
+        const loadingIndicator = document.querySelector(
+          selectors.loadingIndicator
+        ) as HTMLElement;
+        return loadingIndicator && loadingIndicator.offsetParent !== null;
+      }, selectors);
+
+      if (isLoading) {
+        logger.info('检测到加载指示器，等待加载完成...');
+        // 等待加载指示器消失
+        try {
+          await page.waitForFunction(
+            (selectors) => {
+              const loadingIndicator = document.querySelector(
+                selectors.loadingIndicator
+              ) as HTMLElement;
+              return (
+                !loadingIndicator || loadingIndicator.offsetParent === null
+              );
+            },
+            { timeout: 10000 },
+            selectors
+          );
+        } catch (error) {
+          logger.warn('等待加载指示器消失超时，继续进行');
+        }
+      }
+
+      // 检查是否有"加载更多"按钮需要点击（如果启用了检测）
+      if (scrollConfig.detectLoadMore) {
+        const loadMoreSelectors = [
+          'button:has-text("加载更多")',
+          'button:has-text("Load More")',
+          'button:has-text("Show More")',
+          'button:has-text("更多")',
+          '.load-more',
+          '.more-results',
+          '.show-more',
+          '[data-action="load-more"]',
+          '[onclick*="loadMore"]',
+          '[onclick*="more"]',
+        ];
+
+        for (const selector of loadMoreSelectors) {
+          try {
+            const loadMoreButton = await page.$(selector);
+            if (loadMoreButton) {
+              const isVisible = await page.evaluate((el) => {
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+              }, loadMoreButton);
+
+              if (isVisible) {
+                logger.info(`发现"加载更多"按钮: ${selector}，尝试点击`);
+                await loadMoreButton.click();
+                await sleep(delays.pageLoad);
+                break; // 找到并点击后跳出循环
+              }
+            }
+          } catch (error) {
+            // 继续尝试下一个选择器
+          }
+        }
+      }
+
+      previousResultCount = currentResultCount;
+      scrollCount++;
+
+      // 额外等待，确保内容完全加载
+      await sleep(delays.betweenRequests / 2);
+    }
+
+    // 最终滚动到顶部，方便后续处理
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+
+    const finalCount = await page.evaluate((selectors) => {
+      const elements = document.querySelectorAll(selectors.searchResults);
+      return elements.length;
+    }, selectors);
+
+    logger.info(
+      `滚动加载完成，共加载了 ${finalCount} 个搜索结果项（滚动 ${scrollCount} 次）`
+    );
+  }
+
+  /**
    * 从搜索页面提取结果列表
    */
   private async extractSearchResults(
     page: Page,
     keyword: string
   ): Promise<SearchResultItem[]> {
+    // 首先处理分页滚动，加载所有搜索结果
+    await this.loadAllSearchResults(page);
+
     const browserUseMode = this.config.aiConfig?.browserUseMode || 'hybrid';
 
     // Browser-Use 专用模式
@@ -209,47 +643,248 @@ export class AcademicPaperCrawler {
 
         resultElements.forEach((element) => {
           try {
-            const titleElement = element.querySelector(selectors.paperTitle);
-            const title = titleElement?.textContent?.trim() || '';
+            // 更精确的标题提取
+            let title = '';
+            const titleSelectors = [
+              'h3 a',
+              'h4 a',
+              'h5 a', // 标题链接
+              'h3',
+              'h4',
+              'h5', // 直接标题
+              '.title a',
+              '.paper-title a', // 类名标题链接
+              '.title',
+              '.paper-title', // 直接类名标题
+              'a[href*="content"]', // SIGCHI特定链接
+              'strong',
+              'b', // 粗体文本
+            ];
 
-            const authorsElement = element.querySelector(
-              selectors.paperAuthors
-            );
-            const authorsText = authorsElement?.textContent?.trim() || '';
-            const authors = authorsText
-              ? authorsText.split(/[,;]/).map((a) => a.trim())
-              : [];
+            for (const selector of titleSelectors) {
+              const titleEl = element.querySelector(selector);
+              if (titleEl?.textContent?.trim()) {
+                title = titleEl.textContent.trim();
+                // 清理标题：移除多余的空白和换行
+                title = title.replace(/\s+/g, ' ').trim();
+                // 如果标题看起来合理（长度>10且不包含过多数字）
+                if (
+                  title.length > 10 &&
+                  !/^\d+$/.test(title) &&
+                  !title.includes('Papers') &&
+                  !title.includes('Tutorial')
+                ) {
+                  break;
+                }
+              }
+            }
+
+            // 更精确的作者提取
+            let authors: string[] = [];
+            const authorSelectors = [
+              '.author-list',
+              '.authors',
+              '.author', // 标准作者类
+              '.byline',
+              '.credits', // 署名行
+              'small',
+              '.text-muted', // 小字文本
+              '.secondary-text', // 次要文本
+              'span[class*="author"]', // 包含author的span
+              'div[class*="author"]', // 包含author的div
+            ];
+
+            for (const selector of authorSelectors) {
+              const authorsEl = element.querySelector(selector);
+              if (authorsEl?.textContent?.trim()) {
+                const authorsText = authorsEl.textContent.trim();
+                // 清理和分割作者
+                const cleanAuthorsText = authorsText
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                if (cleanAuthorsText && cleanAuthorsText.length > 2) {
+                  authors = cleanAuthorsText
+                    .split(/[,;]|\s+,\s+/)
+                    .map((a) => a.trim())
+                    .filter((a) => a.length > 1 && !a.match(/^\d+$/));
+                  if (authors.length > 0) break;
+                }
+              }
+            }
+
+            // 如果还没找到作者，尝试在子元素中查找
+            if (authors.length === 0) {
+              const allText = element.textContent || '';
+              const lines = allText
+                .split('\n')
+                .map((line) => line.trim())
+                .filter((line) => line);
+
+              // 寻找包含人名的行（通常包含大写字母开头的词）
+              for (const line of lines) {
+                if (
+                  line.length > 5 &&
+                  line.length < 200 &&
+                  /[A-Z][a-z]+\s+[A-Z]/.test(line) &&
+                  !line.includes('Papers') &&
+                  !line.includes('Tutorial')
+                ) {
+                  authors = line
+                    .split(/[,;]|\s+,\s+/)
+                    .map((a) => a.trim())
+                    .filter((a) => a.length > 2);
+                  if (authors.length > 0) break;
+                }
+              }
+            }
 
             const linkElement = element.querySelector(
               selectors.detailLink
             ) as HTMLAnchorElement;
             const detailUrl = linkElement?.href || '';
 
-            // 尝试提取论文链接（标题上方或旁边的链接符号）
+            // 尝试提取论文链接（左上角或左侧图标链接或其他位置）
             let paperLink = '';
-            const paperLinkSelectors = [
-              'a[href*="pdf"]',
-              'a[href*="doi"]',
-              'a[href*="paper"]',
-              'a[title*="pdf"]',
-              'a[title*="paper"]',
-              'a[title*="download"]',
-              'a[class*="paper"]',
-              'a[class*="pdf"]',
-              'a[class*="link"]',
+
+            // 更全面的论文链接检测策略
+            const paperLinkStrategies = [
+              // 策略1: 直接查找常见的论文链接
+              () => {
+                const directSelectors = [
+                  'a[href*="pdf"]',
+                  'a[href*="doi"]',
+                  'a[href*="acm.org"]',
+                  'a[href*="dl.acm.org"]',
+                  'a[href*="arxiv"]',
+                  'a[href*="paper"]',
+                  'a[href*="download"]',
+                ];
+
+                for (const selector of directSelectors) {
+                  const linkEl = element.querySelector(
+                    selector
+                  ) as HTMLAnchorElement;
+                  if (linkEl?.href && linkEl.href !== detailUrl) {
+                    return linkEl.href;
+                  }
+                }
+                return null;
+              },
+
+              // 策略2: 查找带有特殊属性的链接
+              () => {
+                const attrSelectors = [
+                  'a[title*="PDF"]',
+                  'a[title*="paper"]',
+                  'a[title*="DOI"]',
+                  'a[title*="download"]',
+                  'a[title*="external"]',
+                  'a[target="_blank"]',
+                  'a[rel*="external"]',
+                ];
+
+                for (const selector of attrSelectors) {
+                  const linkEl = element.querySelector(
+                    selector
+                  ) as HTMLAnchorElement;
+                  if (linkEl?.href && linkEl.href !== detailUrl) {
+                    return linkEl.href;
+                  }
+                }
+                return null;
+              },
+
+              // 策略3: 查找图标链接（可能在左上角或左侧）
+              () => {
+                const iconSelectors = [
+                  'a .fa',
+                  'a .icon',
+                  'a .glyphicon',
+                  '.fa-external-link',
+                  '.fa-link',
+                  '.fa-file-pdf',
+                  '.icon-link',
+                  '.link-icon',
+                  'a.icon',
+                ];
+
+                for (const selector of iconSelectors) {
+                  const iconEl = element.querySelector(selector);
+                  if (iconEl) {
+                    const linkEl = iconEl.closest('a') as HTMLAnchorElement;
+                    if (linkEl?.href && linkEl.href !== detailUrl) {
+                      return linkEl.href;
+                    }
+                  }
+                }
+                return null;
+              },
+
+              // 策略4: 查找按钮样式的链接
+              () => {
+                const buttonSelectors = [
+                  '.btn-link',
+                  '.link-button',
+                  '.paper-link',
+                  '.external-link',
+                  '.pdf-link',
+                ];
+
+                for (const selector of buttonSelectors) {
+                  const linkEl = element.querySelector(
+                    selector
+                  ) as HTMLAnchorElement;
+                  if (linkEl?.href && linkEl.href !== detailUrl) {
+                    return linkEl.href;
+                  }
+                }
+                return null;
+              },
+
+              // 策略5: 在元素左上角或左侧查找所有链接
+              () => {
+                const allLinks = Array.from(element.querySelectorAll('a'));
+                for (const link of allLinks) {
+                  const linkEl = link as HTMLAnchorElement;
+                  if (!linkEl.href || linkEl.href === detailUrl) continue;
+
+                  // 检查链接的位置（可能在左上角或左侧）
+                  const rect = linkEl.getBoundingClientRect();
+                  const parentRect = element.getBoundingClientRect();
+
+                  // 如果链接在父元素的左上区域
+                  const isRightSide =
+                    rect.left > parentRect.left + parentRect.width * 0.7;
+                  const isTopSide =
+                    rect.top < parentRect.top + parentRect.height * 0.3;
+
+                  if (isRightSide && isTopSide) {
+                    return linkEl.href;
+                  }
+
+                  // 或者检查链接是否包含论文相关的URL模式
+                  if (
+                    /\.(pdf|doi|paper|download)/i.test(linkEl.href) ||
+                    /(acm\.org|arxiv|doi\.org)/i.test(linkEl.href)
+                  ) {
+                    return linkEl.href;
+                  }
+                }
+                return null;
+              },
             ];
 
-            for (const selector of paperLinkSelectors) {
-              const paperLinkElement = element.querySelector(
-                selector
-              ) as HTMLAnchorElement;
-              if (
-                paperLinkElement &&
-                paperLinkElement.href &&
-                paperLinkElement.href !== detailUrl
-              ) {
-                paperLink = paperLinkElement.href;
-                break;
+            // 逐个尝试策略
+            for (let i = 0; i < paperLinkStrategies.length; i++) {
+              try {
+                const result = paperLinkStrategies[i]();
+                if (result) {
+                  paperLink = result;
+                  console.log(`策略 ${i + 1} 成功找到论文链接: ${paperLink}`);
+                  break;
+                }
+              } catch (error) {
+                console.warn(`策略 ${i + 1} 执行失败:`, error);
               }
             }
 

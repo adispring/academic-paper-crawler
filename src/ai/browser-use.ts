@@ -31,6 +31,178 @@ export class BrowserUseAgent {
   }
 
   /**
+   * Browser-Use 专用人类式滚动行为
+   */
+  private async performHumanLikeScroll(page: Page): Promise<void> {
+    logger.info('Browser-Use 执行人类式平滑滚动...');
+
+    // 获取页面尺寸信息
+    const { viewportHeight, currentY, maxScrollY } = await page.evaluate(
+      () => ({
+        viewportHeight: window.innerHeight,
+        currentY: window.scrollY,
+        maxScrollY:
+          Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          ) - window.innerHeight,
+      })
+    );
+
+    if (currentY >= maxScrollY * 0.95) {
+      logger.info('Browser-Use: 已接近页面底部，跳过滚动');
+      return;
+    }
+
+    // 分3-5步平滑滚动
+    const scrollSteps = 3 + Math.floor(Math.random() * 3); // 3-5步
+    const remainingDistance = maxScrollY - currentY;
+    const stepDistance = Math.floor(remainingDistance / scrollSteps);
+
+    for (let i = 0; i < scrollSteps; i++) {
+      // 计算这一步的滚动距离，添加随机性
+      const variance = stepDistance * (0.8 + Math.random() * 0.4); // ±20%变化
+      const scrollDistance = Math.min(Math.floor(variance), remainingDistance);
+
+      if (scrollDistance <= 0) break;
+
+      // 执行平滑滚动动画
+      await page.evaluate((distance) => {
+        return new Promise<void>((resolve) => {
+          const start = window.scrollY;
+          const target = start + distance;
+          const duration = 400 + Math.random() * 300; // 400-700ms
+          let startTime: number;
+
+          function animate(currentTime: number) {
+            if (!startTime) startTime = currentTime;
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            // 缓动函数 - 开始快，结束慢
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+            window.scrollTo(0, start + (target - start) * easeOut);
+
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            } else {
+              resolve();
+            }
+          }
+
+          requestAnimationFrame(animate);
+        });
+      }, scrollDistance);
+
+      // 人类式停顿 - 模拟查看内容的时间
+      const pauseTime = 800 + Math.random() * 600; // 0.8-1.4秒
+      logger.info(
+        `Browser-Use 滚动步骤 ${i + 1}/${scrollSteps}，停顿 ${Math.round(
+          pauseTime
+        )}ms`
+      );
+      await new Promise((resolve) => setTimeout(resolve, pauseTime));
+
+      // 偶尔模拟用户的回看行为
+      if (i > 0 && Math.random() < 0.25) {
+        // 25%概率
+        logger.info('Browser-Use 模拟用户回看行为');
+        await page.evaluate(() => {
+          const backDistance = 30 + Math.random() * 80; // 回滚30-110px
+          window.scrollBy(0, -backDistance);
+        });
+        await new Promise((resolve) =>
+          setTimeout(resolve, 200 + Math.random() * 300)
+        );
+
+        // 继续向前
+        await page.evaluate(() => {
+          const forwardDistance = 50 + Math.random() * 100;
+          window.scrollBy(0, forwardDistance);
+        });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    }
+
+    logger.info('Browser-Use 人类式滚动完成');
+  }
+
+  /**
+   * 处理智能滚动加载，获取所有搜索结果
+   */
+  private async handleSmartScrolling(page: Page): Promise<void> {
+    logger.info('Browser-Use 开始智能滚动加载...');
+
+    let previousResultCount = 0;
+    let currentResultCount = 0;
+    let noNewContentCount = 0;
+    const maxRetries = 3;
+    const maxScrolls = 15;
+    let scrollCount = 0;
+
+    while (scrollCount < maxScrolls && noNewContentCount < maxRetries) {
+      // 获取当前结果数量（通过多种方式检测）
+      currentResultCount = await page.evaluate(() => {
+        const possibleSelectors = [
+          '.search-result-item',
+          '.result-item',
+          '.paper-item',
+          '.publication',
+          'article',
+          '[class*="result"]',
+          '[class*="paper"]',
+        ];
+
+        let maxCount = 0;
+        for (const selector of possibleSelectors) {
+          const elements = document.querySelectorAll(selector);
+          maxCount = Math.max(maxCount, elements.length);
+        }
+        return maxCount;
+      });
+
+      logger.info(`Browser-Use 检测到 ${currentResultCount} 个搜索结果`);
+
+      if (currentResultCount === previousResultCount) {
+        noNewContentCount++;
+        logger.info(`Browser-Use 连续 ${noNewContentCount} 次无新内容`);
+
+        if (noNewContentCount >= maxRetries) {
+          logger.info('Browser-Use 智能滚动完成');
+          break;
+        }
+      } else {
+        noNewContentCount = 0;
+      }
+
+      // 优先使用AI智能操作，然后使用人类式滚动作为备用
+      const scrollAction = await this.executeAction(
+        page,
+        '缓慢向下滚动页面以加载更多搜索结果，模拟人类浏览行为。如果发现"加载更多"或"查看更多"按钮，请点击它',
+        '搜索结果页面人类式滚动加载'
+      );
+
+      if (!scrollAction) {
+        logger.info('AI操作未成功，使用人类式平滑滚动备用方案');
+        await this.performHumanLikeScroll(page);
+      }
+
+      // 等待内容加载和处理
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      previousResultCount = currentResultCount;
+      scrollCount++;
+    }
+
+    // 滚动回顶部
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+
+    logger.info(`Browser-Use 智能滚动完成，共滚动 ${scrollCount} 次`);
+  }
+
+  /**
    * 使用 Browser-Use 从搜索结果页面提取论文信息
    */
   async extractSearchResults(
@@ -45,60 +217,71 @@ export class BrowserUseAgent {
     try {
       logger.info('开始使用 Browser-Use 提取搜索结果');
 
+      // 首先进行智能滚动加载
+      await this.handleSmartScrolling(page);
+
       // 获取页面内容和可见元素信息
       const pageContext = await this.getPageContext(page);
 
       const prompt = `
-作为智能浏览器代理，请从当前学术论文搜索结果页面提取论文列表信息。
+作为智能浏览器代理，请从当前SIGCHI学术会议搜索结果页面提取论文列表信息。
 
 任务目标：
 - 搜索关键词：${searchKeyword}
-- 提取搜索结果页面上显示的论文信息
+- 从SIGCHI会议网站的Content标签页提取所有论文信息
+- 特别注意：Content标签页显示总结果数量，确保提取所有可见的论文
 
 页面上下文：
 ${pageContext}
 
-重要说明：
-- 搜索结果页面通常显示论文标题、作者、详情页链接和论文链接
-- 论文标题上方或旁边可能有链接符号（🔗、链接图标），这是真正的论文链接（PDF、DOI等）
-- 论文标题本身可能是详情页链接，用于查看更多信息和摘要
-- 请区分这两种链接：论文链接（paperLink）和详情页链接（detailUrl）
+SIGCHI网站特点：
+1. 这是SIGCHI学术会议网站（programs.sigchi.org）
+2. Content标签页显示论文总数（如"Content (79)"）
+3. 每个论文条目包含：标题、作者、详情链接
+4. 重要：每个论文条目的左上角有一个特殊的链接按钮（显示数字如"1"）
+5. 这个按钮触发覆盖层，包含指向ACM数字图书馆、DOI页面或PDF文件的链接
 
-请按照以下步骤操作：
-1. 仔细识别页面上的所有论文条目列表
-2. 对每个论文条目提取：
-   - 标题（title）- 必须，论文的标题文本
-   - 作者列表（authors）- 如果可见
-   - 详情页面链接（detailUrl）- 必须，指向该论文详情页的链接（用于获取摘要）
-   - 论文链接（paperLink）- 如果可见，论文的直接链接（PDF、DOI、外部链接等）
+网站结构分析：
+- 使用Angular框架和虚拟滚动
+- 每个论文是<content-card>组件
+- 主要链接：<a class="link-block card-container">指向详情页
+- 外部链接按钮：<link-list-btn><button>触发外部链接覆盖层
 
-链接识别要求：
-- detailUrl：通常是标题链接，指向本站的论文详情页面
-- paperLink：通常是标题上方或旁边的链接符号，指向外部论文PDF或DOI页面
-- 确保每个论文的链接都是唯一的
-- 如果找不到论文链接，可以不包含paperLink字段
+链接识别策略：
+- detailUrl：论文标题链接（.link-block.card-container），指向本站详情页
+- paperLink：左上角链接按钮（link-list-btn button），触发外部资源链接
+
+请特别注意寻找：
+- 每个论文条目左上角的<link-list-btn>按钮（显示数字"1"）
+- 按钮的aria-label="Show extra links"属性
+- 点击后可能出现的覆盖层中的外部链接
+- 指向dl.acm.org、doi.org、arxiv.org等外部网站的链接
+
+提取步骤：
+1. 识别Content标签页中的所有<content-card>论文条目
+2. 对每个论文条目：
+   - 提取论文标题（.card-data-name .name）
+   - 提取作者列表（person-list中的a[person-link]元素）
+   - 找到详情页链接（.link-block.card-container的href）
+   - 识别左上角的<link-list-btn>按钮（可能需要点击获取外部链接）
 
 返回JSON格式：
 [
   {
-    "title": "论文标题1",
-    "authors": ["作者1", "作者2"],
-    "detailUrl": "https://具体论文详情页链接1",
-    "paperLink": "https://论文PDF或DOI链接1"
-  },
-  {
-    "title": "论文标题2", 
-    "authors": ["作者3", "作者4"],
-    "detailUrl": "https://具体论文详情页链接2",
-    "paperLink": "https://论文PDF或DOI链接2"
+    "title": "论文完整标题",
+    "authors": ["作者1", "作者2", "作者3"],
+    "detailUrl": "https://programs.sigchi.org/...",
+    "paperLink": "https://dl.acm.org/..." 
   }
 ]
 
-注意：
-- 不要包含abstract字段，因为摘要信息不在搜索结果页面上
-- 如果找不到paperLink，可以省略该字段
-- 确保detailUrl和paperLink是不同的链接
-- 只返回JSON数组，不要包含其他说明文字
+质量要求：
+- 确保提取Content标签页中的所有<content-card>论文（不要遗漏）
+- 仔细检查每个条目左上角的<link-list-btn>按钮
+- paperLink应该指向外部资源（ACM、DOI、PDF等），可能需要点击按钮获取
+- detailUrl应该指向SIGCHI网站内的详情页（/facct/2025/program/content/...）
+- 只返回JSON数组，不要包含其他文字说明
+- 如果某个论文的<link-list-btn>按钮无法点击或没有找到外部链接，可以省略paperLink字段
 `;
 
       const response = await this.llm.invoke([

@@ -24,6 +24,27 @@ export interface CrawlerConfig {
   outputPath: string;
   userAgent: string;
   aiConfig?: AIConfig;
+  // 滚动加载配置
+  scrollConfig?: ScrollConfig;
+}
+
+/**
+ * 滚动加载配置接口
+ */
+export interface ScrollConfig {
+  enabled: boolean;
+  maxScrolls: number;
+  maxRetries: number;
+  scrollDelay: number;
+  detectLoadMore: boolean;
+  // 人类式滚动配置
+  humanLike: boolean; // 是否启用人类式滚动
+  scrollStepsMin: number; // 最小滚动步数
+  scrollStepsMax: number; // 最大滚动步数
+  stepDelayMin: number; // 步骤间最小延迟(ms)
+  stepDelayMax: number; // 步骤间最大延迟(ms)
+  randomBackscroll: boolean; // 是否随机回看
+  backscrollChance: number; // 回看概率(0-1)
 }
 
 /**
