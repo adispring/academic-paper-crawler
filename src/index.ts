@@ -45,6 +45,12 @@ class PaperCrawlerApp {
       .option('--ai-extract', '启用AI辅助信息提取（提高提取准确性）')
       .option('--ai-extract-fallback', '仅在常规提取失败时使用AI辅助提取')
       .option('--ai-extract-enhance', '使用AI增强所有提取结果的质量')
+      .option('--browser-use', '启用Browser-Use智能浏览器操作')
+      .option(
+        '--browser-use-mode <mode>',
+        'Browser-Use模式: hybrid(混合), browser-use-only(仅Browser-Use), traditional-only(仅传统)',
+        'hybrid'
+      )
       .option('--ai-model <model>', 'AI模型名称', 'gpt-3.5-turbo')
       .option(
         '--ai-api-key <key>',
@@ -71,6 +77,12 @@ class PaperCrawlerApp {
       .option('--ai-extract', '启用AI辅助信息提取（提高提取准确性）')
       .option('--ai-extract-fallback', '仅在常规提取失败时使用AI辅助提取')
       .option('--ai-extract-enhance', '使用AI增强所有提取结果的质量')
+      .option('--browser-use', '启用Browser-Use智能浏览器操作')
+      .option(
+        '--browser-use-mode <mode>',
+        'Browser-Use模式: hybrid(混合), browser-use-only(仅Browser-Use), traditional-only(仅传统)',
+        'hybrid'
+      )
       .option('--ai-model <model>', 'AI模型名称', 'gpt-3.5-turbo')
       .option(
         '--ai-api-key <key>',
@@ -105,7 +117,8 @@ class PaperCrawlerApp {
         options.ai ||
         options.aiExtract ||
         options.aiExtractFallback ||
-        options.aiExtractEnhance
+        options.aiExtractEnhance ||
+        options.browserUse
       ) {
         config.aiConfig = {
           enabled: true,
@@ -127,12 +140,16 @@ class PaperCrawlerApp {
           enableExtraction:
             options.aiExtract ||
             options.aiExtractFallback ||
-            options.aiExtractEnhance,
+            options.aiExtractEnhance ||
+            options.browserUse,
           extractionMode: options.aiExtractEnhance
             ? 'enhance'
             : options.aiExtractFallback
             ? 'fallback'
             : 'always',
+          // Browser-Use 配置
+          useBrowserUse: options.browserUse || false,
+          browserUseMode: options.browserUseMode || 'hybrid',
         };
 
         logger.info('AI 功能已启用');
@@ -153,6 +170,14 @@ class PaperCrawlerApp {
           };
           logger.info(
             `提取模式: ${modeDesc[config.aiConfig.extractionMode || 'always']}`
+          );
+        }
+
+        // Browser-Use 功能
+        if (options.browserUse) {
+          logger.info('✓ Browser-Use 智能浏览器操作已启用');
+          logger.info(
+            `Browser-Use 模式: ${options.browserUseMode || 'hybrid'}`
           );
         }
 
@@ -225,7 +250,8 @@ class PaperCrawlerApp {
         options.ai ||
         options.aiExtract ||
         options.aiExtractFallback ||
-        options.aiExtractEnhance
+        options.aiExtractEnhance ||
+        options.browserUse
       ) {
         config.aiConfig = {
           enabled: true,
@@ -247,12 +273,16 @@ class PaperCrawlerApp {
           enableExtraction:
             options.aiExtract ||
             options.aiExtractFallback ||
-            options.aiExtractEnhance,
+            options.aiExtractEnhance ||
+            options.browserUse,
           extractionMode: options.aiExtractEnhance
             ? 'enhance'
             : options.aiExtractFallback
             ? 'fallback'
             : 'always',
+          // Browser-Use 配置
+          useBrowserUse: options.browserUse || false,
+          browserUseMode: options.browserUseMode || 'hybrid',
         };
 
         logger.info('批量搜索 AI 功能已启用');
@@ -273,6 +303,14 @@ class PaperCrawlerApp {
           };
           logger.info(
             `提取模式: ${modeDesc[config.aiConfig.extractionMode || 'always']}`
+          );
+        }
+
+        // Browser-Use 功能
+        if (options.browserUse) {
+          logger.info('✓ Browser-Use 智能浏览器操作已启用');
+          logger.info(
+            `Browser-Use 模式: ${options.browserUseMode || 'hybrid'}`
           );
         }
 

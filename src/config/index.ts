@@ -14,7 +14,7 @@ export const defaultCrawlerConfig: CrawlerConfig = {
   userAgent:
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
   aiConfig: {
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4o-mini',
     temperature: 0.3,
     maxTokens: 1000,
     enabled: false,
@@ -24,6 +24,12 @@ export const defaultCrawlerConfig: CrawlerConfig = {
       AIAnalysisType.EXTRACT_KEYWORDS,
       AIAnalysisType.RELEVANCE,
     ],
+    // AI辅助提取配置
+    enableExtraction: false,
+    extractionMode: 'fallback',
+    // Browser-Use 配置
+    useBrowserUse: false,
+    browserUseMode: 'hybrid',
   },
 };
 
@@ -31,7 +37,7 @@ export const defaultCrawlerConfig: CrawlerConfig = {
  * 默认AI配置
  */
 export const defaultAIConfig: AIConfig = {
-  model: 'gpt-3.5-turbo',
+  model: 'gpt-4o-mini',
   temperature: 0.3,
   maxTokens: 1000,
   enabled: false,
@@ -41,6 +47,12 @@ export const defaultAIConfig: AIConfig = {
     AIAnalysisType.EXTRACT_KEYWORDS,
     AIAnalysisType.RELEVANCE,
   ],
+  // AI辅助提取配置
+  enableExtraction: false,
+  extractionMode: 'fallback',
+  // Browser-Use 配置
+  useBrowserUse: false,
+  browserUseMode: 'hybrid',
 };
 
 /**

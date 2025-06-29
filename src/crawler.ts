@@ -17,7 +17,12 @@ import {
   getAbsoluteUrl,
   setupOutputDirectory,
 } from './utils';
-import { createPaperAnalyzer, PaperAnalyzer } from './ai';
+import {
+  createPaperAnalyzer,
+  PaperAnalyzer,
+  createBrowserUseAgent,
+  BrowserUseAgent,
+} from './ai';
 
 /**
  * 学术论文爬虫类
@@ -27,6 +32,7 @@ export class AcademicPaperCrawler {
   private config: CrawlerConfig;
   private status: CrawlerStatus;
   private aiAnalyzer: PaperAnalyzer | null = null;
+  private browserUseAgent: BrowserUseAgent | null = null;
 
   constructor(config: Partial<CrawlerConfig> = {}) {
     this.config = { ...defaultCrawlerConfig, ...config };
@@ -45,6 +51,12 @@ export class AcademicPaperCrawler {
     if (this.config.aiConfig?.enabled) {
       this.aiAnalyzer = createPaperAnalyzer(this.config.aiConfig);
       logger.info('AI 分析器已启用');
+
+      // 初始化 Browser-Use 代理（如果启用）
+      if (this.config.aiConfig.useBrowserUse) {
+        this.browserUseAgent = createBrowserUseAgent(this.config.aiConfig);
+        logger.info('Browser-Use 代理已启用');
+      }
     }
   }
 
@@ -105,7 +117,7 @@ export class AcademicPaperCrawler {
       await page.goto(searchUrl, { waitUntil: 'networkidle2' });
       await sleep(delays.pageLoad);
 
-      const searchResults = await this.extractSearchResults(page);
+      const searchResults = await this.extractSearchResults(page, keyword);
       this.status.totalFound = searchResults.length;
 
       logger.info(`找到 ${searchResults.length} 个搜索结果`);
@@ -171,41 +183,214 @@ export class AcademicPaperCrawler {
   /**
    * 从搜索页面提取结果列表
    */
-  private async extractSearchResults(page: Page): Promise<SearchResultItem[]> {
-    return await page.evaluate((selectors) => {
-      const results: SearchResultItem[] = [];
-      const resultElements = document.querySelectorAll(selectors.searchResults);
+  private async extractSearchResults(
+    page: Page,
+    keyword: string
+  ): Promise<SearchResultItem[]> {
+    const browserUseMode = this.config.aiConfig?.browserUseMode || 'hybrid';
 
-      resultElements.forEach((element) => {
-        try {
-          const titleElement = element.querySelector(selectors.paperTitle);
-          const title = titleElement?.textContent?.trim() || '';
+    // Browser-Use 专用模式
+    if (browserUseMode === 'browser-use-only' && this.browserUseAgent) {
+      logger.info('使用 Browser-Use 专用模式提取搜索结果');
+      return await this.browserUseAgent.extractSearchResults(page, keyword);
+    }
 
-          const authorsElement = element.querySelector(selectors.paperAuthors);
-          const authorsText = authorsElement?.textContent?.trim() || '';
-          const authors = authorsText
-            ? authorsText.split(/[,;]/).map((a) => a.trim())
-            : [];
+    // 传统方式专用模式或混合模式的第一步
+    let conventionalResults: SearchResultItem[] = [];
 
-          const linkElement = element.querySelector(
-            selectors.detailLink
-          ) as HTMLAnchorElement;
-          const detailUrl = linkElement?.href || '';
+    if (browserUseMode !== 'browser-use-only') {
+      // 首先尝试常规CSS选择器提取
+      conventionalResults = await page.evaluate((selectors) => {
+        const results: SearchResultItem[] = [];
+        const resultElements = document.querySelectorAll(
+          selectors.searchResults
+        );
 
-          if (title && detailUrl) {
-            results.push({
-              title: title,
-              authors: authors,
-              detailUrl: detailUrl,
-            });
+        resultElements.forEach((element) => {
+          try {
+            const titleElement = element.querySelector(selectors.paperTitle);
+            const title = titleElement?.textContent?.trim() || '';
+
+            const authorsElement = element.querySelector(
+              selectors.paperAuthors
+            );
+            const authorsText = authorsElement?.textContent?.trim() || '';
+            const authors = authorsText
+              ? authorsText.split(/[,;]/).map((a) => a.trim())
+              : [];
+
+            const linkElement = element.querySelector(
+              selectors.detailLink
+            ) as HTMLAnchorElement;
+            const detailUrl = linkElement?.href || '';
+
+            if (title && detailUrl) {
+              results.push({
+                title: title,
+                authors: authors,
+                detailUrl: detailUrl,
+              });
+            }
+          } catch (error) {
+            console.warn('提取搜索结果项时出错:', error);
           }
-        } catch (error) {
-          console.warn('提取搜索结果项时出错:', error);
-        }
-      });
+        });
 
-      return results;
-    }, selectors);
+        return results;
+      }, selectors);
+
+      logger.info(`传统方式提取到 ${conventionalResults.length} 个搜索结果`);
+    }
+
+    // 传统方式专用模式，直接返回
+    if (browserUseMode === 'traditional-only') {
+      return conventionalResults;
+    }
+
+    // 混合模式：结合传统方式和Browser-Use的结果
+    if (browserUseMode === 'hybrid' && this.browserUseAgent) {
+      try {
+        logger.info('开始混合模式：结合传统方式和Browser-Use提取');
+
+        // 使用Browser-Use提取结果
+        const browserUseResults =
+          await this.browserUseAgent.extractSearchResults(page, keyword);
+        logger.info(
+          `Browser-Use 提取到 ${browserUseResults.length} 个搜索结果`
+        );
+
+        // 合并两种方式的结果，去重
+        const combinedResults = this.mergeSearchResults(
+          conventionalResults,
+          browserUseResults
+        );
+        logger.info(`合并后共 ${combinedResults.length} 个搜索结果`);
+
+        if (combinedResults.length > 0) {
+          return combinedResults;
+        }
+      } catch (browserUseError) {
+        logger.warn(
+          `Browser-Use 提取搜索结果时出错: ${
+            (browserUseError as Error).message
+          }`
+        );
+      }
+    }
+
+    // 检查是否需要使用传统AI辅助提取搜索结果
+    const shouldUseAI =
+      this.shouldUseAIExtractionForSearch(conventionalResults);
+
+    if (shouldUseAI && this.aiAnalyzer) {
+      try {
+        logger.info('开始传统AI辅助提取搜索结果');
+        const htmlContent = await page.content();
+        const mode = this.config.aiConfig?.extractionMode || 'fallback';
+
+        if (mode === 'always') {
+          // 总是使用AI提取模式
+          logger.info('使用AI完全提取搜索结果');
+          const aiResults = await this.aiAnalyzer.extractSearchResultsFromHTML(
+            htmlContent,
+            keyword
+          );
+
+          if (aiResults.length > 0) {
+            logger.info(
+              `AI成功提取 ${aiResults.length} 个搜索结果，常规提取 ${conventionalResults.length} 个`
+            );
+            return aiResults;
+          } else {
+            logger.warn('AI提取搜索结果失败，使用常规提取结果');
+            return conventionalResults;
+          }
+        } else if (mode === 'enhance') {
+          // AI增强模式
+          logger.info('使用AI增强搜索结果');
+          const enhancedResults = await this.aiAnalyzer.enhanceSearchResults(
+            conventionalResults,
+            htmlContent,
+            keyword
+          );
+          return enhancedResults;
+        } else if (mode === 'fallback') {
+          // 仅当常规提取失败或结果太少时使用AI
+          if (conventionalResults.length === 0) {
+            logger.info('常规提取未找到结果，使用AI辅助提取');
+            const aiResults =
+              await this.aiAnalyzer.extractSearchResultsFromHTML(
+                htmlContent,
+                keyword
+              );
+
+            if (aiResults.length > 0) {
+              logger.info(`AI fallback成功提取 ${aiResults.length} 个搜索结果`);
+              return aiResults;
+            }
+          } else {
+            logger.info(
+              `常规提取找到 ${conventionalResults.length} 个结果，不需要AI辅助`
+            );
+          }
+        }
+      } catch (aiError) {
+        logger.warn(`AI辅助提取搜索结果时出错: ${(aiError as Error).message}`);
+      }
+    }
+
+    return conventionalResults;
+  }
+
+  /**
+   * 合并两种方式提取的搜索结果，去除重复项
+   */
+  private mergeSearchResults(
+    conventionalResults: SearchResultItem[],
+    browserUseResults: SearchResultItem[]
+  ): SearchResultItem[] {
+    const merged: SearchResultItem[] = [...conventionalResults];
+    const existingTitles = new Set(
+      conventionalResults.map((r) => r.title.toLowerCase())
+    );
+
+    for (const result of browserUseResults) {
+      // 基于标题的简单去重
+      if (!existingTitles.has(result.title.toLowerCase())) {
+        merged.push(result);
+        existingTitles.add(result.title.toLowerCase());
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * 判断是否应该使用AI辅助提取搜索结果
+   */
+  private shouldUseAIExtractionForSearch(
+    conventionalResults: SearchResultItem[]
+  ): boolean {
+    if (!this.config.aiConfig?.enableExtraction || !this.aiAnalyzer) {
+      return false;
+    }
+
+    const mode = this.config.aiConfig.extractionMode || 'fallback';
+
+    switch (mode) {
+      case 'always':
+        return true;
+      case 'enhance':
+        return conventionalResults.length > 0; // 只有有结果时才增强
+      case 'fallback':
+        // 当没有找到结果或结果太少时使用AI
+        return (
+          conventionalResults.length === 0 ||
+          conventionalResults.some((r) => !r.title || !r.authors.length)
+        );
+      default:
+        return false;
+    }
   }
 
   /**
@@ -224,6 +409,7 @@ export class AcademicPaperCrawler {
       });
       await sleep(delays.pageLoad);
 
+      // 首先尝试常规的CSS选择器提取
       const paperDetail = await detailPage.evaluate((selectors) => {
         const titleElement = document.querySelector(selectors.detailTitle);
         const title = titleElement?.textContent?.trim() || '';
@@ -258,18 +444,140 @@ export class AcademicPaperCrawler {
         paperDetail.paperLink
       );
 
-      if (!title) {
-        throw new Error('无法提取论文标题');
-      }
-
-      return {
+      // 创建基础论文信息，优先使用详情页面的信息，但如果缺失则使用搜索结果中的信息
+      let paperInfo: PaperInfo = {
         title,
         authors,
-        abstract,
+        abstract: abstract || (searchResult as any).abstract || '', // 使用搜索结果中的摘要作为后备
         paperLink,
         searchKeyword: keyword,
         crawledAt: new Date(),
       };
+
+      // 检查Browser-Use模式
+      const browserUseMode = this.config.aiConfig?.browserUseMode || 'hybrid';
+
+      // Browser-Use 专用模式
+      if (browserUseMode === 'browser-use-only' && this.browserUseAgent) {
+        try {
+          logger.info('使用 Browser-Use 专用模式提取论文详情');
+          const browserUseResult =
+            await this.browserUseAgent.extractPaperDetail(
+              detailPage,
+              keyword,
+              paperInfo
+            );
+
+          if (browserUseResult) {
+            paperInfo = browserUseResult;
+            logger.info(`Browser-Use 提取成功: ${paperInfo.title}`);
+          } else {
+            logger.warn('Browser-Use 提取失败，使用回退信息');
+          }
+        } catch (browserUseError) {
+          logger.warn(
+            `Browser-Use 提取详情失败: ${(browserUseError as Error).message}`
+          );
+        }
+      }
+      // 混合模式：Browser-Use + 传统AI
+      else if (browserUseMode === 'hybrid' && this.browserUseAgent) {
+        try {
+          logger.info('使用混合模式提取论文详情');
+
+          // 首先尝试Browser-Use
+          const browserUseResult =
+            await this.browserUseAgent.extractPaperDetail(
+              detailPage,
+              keyword,
+              paperInfo
+            );
+
+          if (browserUseResult) {
+            paperInfo = browserUseResult;
+            logger.info(`Browser-Use 提取成功，继续传统AI增强`);
+          }
+
+          // 然后使用传统AI进行增强
+          if (this.aiAnalyzer) {
+            const htmlContent = await detailPage.content();
+            const enhancedInfo = await this.aiAnalyzer.enhanceExtractedInfo(
+              paperInfo,
+              htmlContent
+            );
+            paperInfo = enhancedInfo;
+            logger.info('传统AI增强完成');
+          }
+        } catch (error) {
+          logger.warn(`混合模式提取失败: ${(error as Error).message}`);
+        }
+      }
+      // 传统模式或Browser-Use失败时的处理
+      else {
+        // 检查是否需要使用传统AI辅助提取
+        const shouldUseAI = this.shouldUseAIExtraction(paperInfo);
+
+        console.log('shouldUseAI', shouldUseAI);
+
+        if (shouldUseAI && this.aiAnalyzer) {
+          try {
+            // 获取页面HTML内容供AI分析
+            const htmlContent = await detailPage.content();
+
+            if (this.config.aiConfig?.extractionMode === 'always') {
+              // 总是使用AI提取模式
+              logger.info('使用传统AI辅助提取模式');
+              const aiExtractedInfo =
+                await this.aiAnalyzer.extractPaperInfoFromHTML(
+                  htmlContent,
+                  keyword,
+                  paperInfo
+                );
+
+              if (aiExtractedInfo) {
+                paperInfo = aiExtractedInfo;
+                logger.info(`传统AI辅助提取成功: ${paperInfo.title}`);
+              } else {
+                logger.warn(`传统AI辅助提取失败，使用常规提取结果`);
+              }
+            } else if (this.config.aiConfig?.extractionMode === 'enhance') {
+              // AI增强模式
+              logger.info('使用传统AI增强提取结果');
+              paperInfo = await this.aiAnalyzer.enhanceExtractedInfo(
+                paperInfo,
+                htmlContent
+              );
+            } else if (this.config.aiConfig?.extractionMode === 'fallback') {
+              // 仅当常规提取失败时使用AI
+              if (!title || !abstract) {
+                logger.info('常规提取不完整，使用传统AI辅助提取');
+                const aiExtractedInfo =
+                  await this.aiAnalyzer.extractPaperInfoFromHTML(
+                    htmlContent,
+                    keyword,
+                    paperInfo
+                  );
+
+                if (aiExtractedInfo) {
+                  paperInfo = aiExtractedInfo;
+                  logger.info(`传统AI辅助提取成功: ${paperInfo.title}`);
+                }
+              }
+            }
+          } catch (aiError) {
+            logger.warn(
+              `传统AI辅助提取过程中出错: ${(aiError as Error).message}`
+            );
+          }
+        }
+      }
+
+      // 验证最终结果
+      if (!paperInfo.title) {
+        throw new Error('无法提取论文标题');
+      }
+
+      return paperInfo;
     } catch (error) {
       logger.error(
         `提取论文详情失败: ${searchResult.detailUrl} - ${
@@ -279,6 +587,34 @@ export class AcademicPaperCrawler {
       throw error;
     } finally {
       await detailPage.close();
+    }
+  }
+
+  /**
+   * 判断是否应该使用AI辅助提取
+   */
+  private shouldUseAIExtraction(paperInfo: PaperInfo): boolean {
+    if (!this.config.aiConfig?.enableExtraction || !this.aiAnalyzer) {
+      return false;
+    }
+
+    const mode = this.config.aiConfig.extractionMode || 'fallback';
+
+    switch (mode) {
+      case 'always':
+        return true;
+      case 'enhance':
+        return true;
+      case 'fallback':
+        // 当标题、作者或摘要缺失时使用AI
+        return (
+          !paperInfo.title ||
+          !paperInfo.authors.length ||
+          !paperInfo.abstract ||
+          paperInfo.abstract.length < 50
+        ); // 摘要太短
+      default:
+        return false;
     }
   }
 

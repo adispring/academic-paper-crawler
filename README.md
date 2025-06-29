@@ -1,161 +1,187 @@
-# 学术论文爬虫工具
+# 学术论文爬虫 (Academic Paper Crawler)
 
-一个专为学术研究设计的智能爬虫工具，能够自动从 SIGCHI 会议网站爬取论文信息，包括标题、作者、摘要和论文链接。现已集成 **LangGraph SDK** 和 **OpenAI** 模型，提供强大的AI分析功能。
+🚀 一个强大的学术论文信息爬虫工具，集成了先进的AI分析能力，专为研究人员和学者设计。
 
-## ✨ 功能特性
+## ✨ 主要特性
 
-- 🔍 **智能搜索**: 基于关键词搜索相关论文
-- 📄 **详细信息**: 提取论文的标题、作者、摘要和下载链接
-- 📊 **多种输出格式**: 支持 CSV 和 JSON 格式输出
-- 🚀 **批量处理**: 支持批量搜索多个关键词
-- 🔧 **可配置**: 丰富的配置选项，适应不同需求
-- 📝 **详细日志**: 完整的爬取过程记录和错误报告
-- 🖥️ **无头模式**: 支持后台运行，也可开启浏览器界面调试
+- 🔍 **智能搜索**: 基于关键词精准搜索学术论文
+- 📊 **多格式输出**: 支持 CSV 和 JSON 格式导出
+- 🤖 **AI 增强分析**: 集成 OpenAI 模型进行智能分析
+- 🔄 **AI 辅助提取**: 双层AI提取，确保数据完整性
+- 📝 **批量处理**: 支持多关键词批量搜索
+- ⚡ **高效稳定**: 内置重试机制和错误处理
+- 🎯 **精准提取**: 提取论文标题、作者、摘要、链接等信息
 
-### 🤖 AI 智能分析功能（新增）
+## 🧠 AI 功能亮点
 
-- 📝 **智能总结**: 自动生成论文摘要总结
-- 🏷️ **自动分类**: 根据内容对论文进行分类
-- 🔍 **关键词提取**: 智能提取论文关键词
-- 💭 **情感分析**: 分析论文摘要的情感倾向
-- ⭐ **相关性评分**: 评估论文与搜索关键词的相关性
+### 1. 搜索结果页面AI分析 🆕
+- **智能批量提取**: 从搜索结果页面一次性识别所有论文
+- **结构化解析**: AI理解页面结构，准确提取论文信息
+- **摘要预提取**: 在搜索阶段就获取可见的摘要信息
+- **链接验证**: 自动验证和修正论文链接
 
-## 📋 技术栈
+### 2. 详情页面AI增强
+- **深度信息提取**: 从详情页面提取完整论文信息
+- **内容质量优化**: AI清理和标准化提取的数据
+- **多层次提取**: 常规提取 + AI辅助 + AI增强的三层保障
 
-- **核心**: TypeScript + Node.js
-- **爬虫**: Puppeteer (无头浏览器)
-- **AI分析**: LangGraph SDK + OpenAI
+### 3. Browser-Use 智能浏览器操作 🔥
+- **🤖 AI驱动操作**: 基于Browser-Use SDK的智能浏览器自动化
+- **🧠 上下文理解**: AI全面理解页面内容和结构，无需依赖CSS选择器
+- **🎯 智能识别**: 动态识别页面元素，自动适应网站布局变化
+- **⚡ 自愈能力**: 网站结构变化时自动调整，减少维护工作
+
+### 4. 智能论文分析
+- **📋 智能总结**: 生成论文核心内容摘要
+- **🏷️ 自动分类**: 识别论文研究领域和方向
+- **🔍 关键词提取**: 自动提取论文核心关键词
+- **💭 情感分析**: 分析论文的研究态度和倾向
+- **⭐ 相关性评分**: 评估论文与搜索关键词的匹配度
+
+## 🛠️ 技术栈
+
+- **运行环境**: Node.js + TypeScript
+- **网页爬取**: Puppeteer (无头浏览器)
+- **AI 处理**: LangGraph SDK + OpenAI API
+- **智能操作**: Browser-Use SDK (AI驱动浏览器自动化)
+- **数据导出**: CSV Writer + JSON
 - **命令行**: Commander.js
-- **文件处理**: CSV-Writer
-- **日志**: Winston
+- **环境管理**: dotenv
 
-## 🚀 安装使用
+## 📦 快速开始
 
-### 1. 安装依赖
+### 安装依赖
 ```bash
 npm install
 ```
 
-### 2. 构建项目
+### 环境配置
+```bash
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑 .env 文件，设置您的 OpenAI API 密钥
+# OPENAI_API_KEY=your_openai_api_key_here
+```
+
+### 构建项目
 ```bash
 npm run build
 ```
 
-### 3. 基础使用
-```bash
-# 搜索单个关键词
-node dist/index.js search -k "artificial intelligence"
+## 🎯 使用方法
 
-# 批量搜索
-node dist/index.js batch -f keywords-example.txt
+### 基础搜索
+```bash
+# 基本搜索
+npx ts-node src/index.ts search -k "machine learning"
+
+# 指定输出格式和路径
+npx ts-node src/index.ts search -k "artificial intelligence" -f json -o ./results
 ```
 
-### 4. AI 增强功能
-
-#### 方法一：使用 .env 文件（推荐）
+### AI 增强搜索 🚀
 ```bash
-# 1. 复制配置模板
-cp .env.example .env
-
-# 2. 编辑 .env 文件，添加您的 API 密钥
-# OPENAI_API_KEY=your_openai_api_key_here
-
-# 3. 启用AI分析
-node dist/index.js search -k "machine learning" --ai
-
-# 4. 批量搜索
-node dist/index.js batch -f keywords-example.txt --ai
-```
-
-#### 方法二：使用环境变量
-```bash
-# 设置环境变量
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-# 启用AI分析
-node dist/index.js search -k "machine learning" --ai
-```
-
-#### 方法三：使用命令行参数
-```bash
-# 使用指定模型
-node dist/index.js search -k "deep learning" --ai --ai-model "gpt-4"
-
-# 完整AI配置示例
-node dist/index.js search -k "natural language processing" \
+# 启用AI分析 + 智能提取 (推荐配置)
+npx ts-node src/index.ts search -k "human-computer interaction" \
   --ai \
-  --ai-model "gpt-3.5-turbo" \
-  --ai-temperature 0.3 \
-  --ai-max-tokens 1000 \
-  --ai-api-key "your_key_here"
+  --ai-extract-fallback
+
+# 高精度AI增强提取
+npx ts-node src/index.ts search -k "machine learning" \
+  --ai \
+  --ai-extract-enhance \
+  --ai-model gpt-4
+
+# 完全AI驱动提取
+npx ts-node src/index.ts search -k "deep learning" \
+  --ai \
+  --ai-extract \
+  --ai-model gpt-3.5-turbo
 ```
 
-## 📖 详细使用说明
-
-### 基础命令
-
-#### 搜索命令
+### Browser-Use 智能操作 🤖
 ```bash
-node dist/index.js search [选项]
+# 启用Browser-Use混合模式 (推荐)
+npx ts-node src/index.ts search -k "virtual reality" \
+  --browser-use \
+  --browser-use-mode hybrid \
+  --ai
 
-选项:
-  -k, --keyword <keyword>     搜索关键词 (必需)
-  -o, --output <path>         输出目录路径 (默认: "./output")
-  -f, --format <format>       输出格式 (csv|json) (默认: "csv")
-  --headless <headless>       是否使用无头模式 (默认: "true")
-  --timeout <timeout>         超时时间(毫秒) (默认: "60000")
-  --max-retries <retries>     最大重试次数 (默认: "3")
-  --retry-delay <delay>       重试延迟(毫秒) (默认: "2000")
+# Browser-Use专用模式 (复杂网站)
+npx ts-node src/index.ts search -k "augmented reality" \
+  --browser-use \
+  --browser-use-mode browser-use-only \
+  --ai-model gpt-4
+
+# 测试Browser-Use功能
+npx ts-node test-browser-use.ts
 ```
 
-#### AI分析选项
+### 批量处理
 ```bash
-  --ai                        启用AI分析功能
-  --ai-model <model>          AI模型名称 (默认: "gpt-3.5-turbo")
-  --ai-api-key <key>          OpenAI API密钥
-  --ai-temperature <temp>     AI温度设置 (默认: "0.3")
-  --ai-max-tokens <tokens>    AI最大令牌数 (默认: "1000")
-```
-
-#### 批量搜索
-```bash
-node dist/index.js batch -f keywords.txt --ai
-```
-
-### 使用示例
-
-#### 关键词文件格式 (keywords.txt)
-```
-artificial intelligence
-machine learning
+# 创建关键词文件
+echo "machine learning
 deep learning
-natural language processing
-computer vision
+neural networks
+computer vision" > keywords.txt
+
+# 批量搜索 + AI分析
+npx ts-node src/index.ts batch -f keywords.txt \
+  --ai \
+  --ai-extract-fallback \
+  --delay 3000
 ```
 
-#### 输出示例
+## 🎛️ 配置选项
 
-**CSV格式** (启用AI分析后):
-```csv
-论文标题,作者,摘要,论文链接,搜索关键词,抓取时间,AI总结,AI分类,AI关键词,AI情感分析,AI相关性评分,AI模型,AI处理时间
+### 基础选项
+- `-k, --keyword`: 搜索关键词
+- `-o, --output`: 输出目录路径
+- `-f, --format`: 输出格式 (csv|json)
+- `--headless`: 无头模式 (true|false)
+- `--timeout`: 超时时间(毫秒)
+
+### AI 分析选项
+- `--ai`: 启用AI论文分析功能
+- `--ai-model`: AI模型 (gpt-3.5-turbo, gpt-4)
+- `--ai-temperature`: AI温度设置 (0.0-1.0)
+- `--ai-max-tokens`: 最大令牌数
+
+### AI 提取选项 🆕
+- `--ai-extract`: 总是使用AI提取 (最高精度)
+- `--ai-extract-fallback`: 仅在常规提取失败时使用AI (推荐)
+- `--ai-extract-enhance`: 使用AI增强所有提取结果 (高质量)
+
+### Browser-Use 选项 🔥
+- `--browser-use`: 启用Browser-Use智能浏览器操作
+- `--browser-use-mode`: 操作模式选择
+  - `hybrid`: 混合模式 (传统+Browser-Use，推荐)
+  - `browser-use-only`: 仅使用Browser-Use (复杂网站)
+  - `traditional-only`: 仅使用传统方法 (简单网站)
+
+## 📊 输出格式
+
+### CSV 格式 (带AI分析)
+```
+论文标题,作者,摘要,论文链接,搜索关键词,抓取时间,AI总结,AI分类,AI关键词,AI情感分析,AI相关性评分
 ```
 
-**JSON格式**:
+### JSON 格式 (带AI分析)
 ```json
 {
-  "searchKeyword": "machine learning",
-  "crawledAt": "2024-01-01T12:00:00.000Z",
-  "totalCount": 10,
   "papers": [
     {
-      "title": "论文标题",
-      "authors": ["作者1", "作者2"],
-      "abstract": "论文摘要",
-      "paperLink": "https://...",
+      "title": "Enhanced User Interface Design for Machine Learning Applications",
+      "authors": ["John Smith", "Jane Doe"],
+      "abstract": "This paper presents a comprehensive study...",
+      "paperLink": "https://dl.acm.org/doi/...",
+      "searchKeyword": "machine learning",
+      "crawledAt": "2024-01-15T10:30:00Z",
       "aiAnalysis": {
-        "summary": "AI生成的总结",
-        "classification": "机器学习",
-        "keywords": ["深度学习", "神经网络"],
+        "summary": "本文提出了一种新的机器学习应用界面设计方法...",
+        "classification": "人机交互",
+        "keywords": ["机器学习", "用户界面", "交互设计"],
         "sentiment": "positive",
         "relevanceScore": 9.2,
         "model": "gpt-3.5-turbo"
@@ -165,113 +191,56 @@ computer vision
 }
 ```
 
-## 🔧 配置说明
+## 🎨 AI 提取模式对比
 
-### 环境变量配置
+| 模式                    | 成本   | 精度  | 速度 | 适用场景           |
+| ----------------------- | ------ | ----- | ---- | ------------------ |
+| `--ai-extract-fallback` | 💰 低   | ⭐⭐⭐⭐  | ⚡⚡⚡  | 日常使用，成本敏感 |
+| `--ai-extract-enhance`  | 💰💰 中  | ⭐⭐⭐⭐⭐ | ⚡⚡   | 高质量要求         |
+| `--ai-extract`          | 💰💰💰 高 | ⭐⭐⭐⭐⭐ | ⚡    | 复杂页面，最高精度 |
 
-#### 使用 .env 文件（推荐）
+## 🤖 Browser-Use 模式对比
+
+| 模式               | 智能度 | 适应性 | 成本   | 适用场景             |
+| ------------------ | ------ | ------ | ------ | -------------------- |
+| `hybrid`           | ⭐⭐⭐⭐   | ⭐⭐⭐⭐⭐  | 💰💰 中  | 推荐模式，平衡各方面 |
+| `browser-use-only` | ⭐⭐⭐⭐⭐  | ⭐⭐⭐⭐⭐  | 💰💰💰 高 | 复杂网站，动态内容   |
+| `traditional-only` | ⭐⭐     | ⭐⭐     | 💰 低   | 简单网站，固定结构   |
+
+## 🔧 开发相关
+
+### 项目结构
+```
+src/
+├── ai/              # AI 分析模块
+├── config/          # 配置文件
+├── types/           # TypeScript 类型定义
+├── utils/           # 工具函数
+├── crawler.ts       # 核心爬虫逻辑
+└── index.ts         # 命令行入口
+```
+
+### 主要脚本
 ```bash
-# 1. 复制配置模板
-cp .env.example .env
-
-# 2. 编辑 .env 文件
-# 必需（启用AI功能时）
-OPENAI_API_KEY=your_openai_api_key_here
-
-# 可选配置
-OPENAI_BASE_URL=https://api.openai.com/v1
-AI_MODEL=gpt-3.5-turbo
-AI_TEMPERATURE=0.3
-AI_MAX_TOKENS=1000
-DEBUG=true
+npm run build        # 构建项目
+npm run clean        # 清理构建文件
+npm run dev          # 开发模式运行
 ```
 
-#### 或使用系统环境变量
-```bash
-export OPENAI_API_KEY=your_openai_api_key_here
-export AI_MODEL=gpt-4
-```
+## 📚 相关文档
 
-### 编程接口
-```typescript
-import { AcademicPaperCrawler } from './src/crawler';
+- [📖 AI 功能详细使用指南](./AI_USAGE.md)
+- [⚙️ 环境变量配置说明](./ENV_CONFIG.md)
+- [🎯 完整使用示例](./keywords-example.txt)
 
-const crawler = new AcademicPaperCrawler({
-  outputFormat: 'json',
-  outputPath: './results',
-  aiConfig: {
-    enabled: true,
-    model: 'gpt-3.5-turbo',
-    temperature: 0.3,
-    maxTokens: 1000
-  }
-});
+## 🤝 贡献
 
-const papers = await crawler.searchPapers('machine learning');
-```
-
-## 📝 输出文件说明
-
-### 文件命名
-- 格式: `papers-{关键词}-{时间戳}.{格式}`
-- 示例: `papers-machine-learning-2024-01-01T12-00-00-000Z.csv`
-
-### AI分析输出
-启用AI功能后，每篇论文会包含以下AI分析结果：
-- 智能总结
-- 论文分类
-- 关键词提取
-- 情感分析
-- 相关性评分
-
-## 🚨 注意事项
-
-- 请遵守目标网站的robots.txt和使用条款
-- 建议设置合理的请求间隔，避免给服务器造成压力
-- AI功能需要OpenAI API密钥，会产生API使用费用
-- 建议先用少量数据测试AI功能，再进行大规模处理
-
-## 🆘 故障排除
-
-### 常见问题
-
-1. **爬取失败**
-   - 检查网络连接
-   - 确认目标网站可访问
-   - 调整超时设置
-
-2. **AI功能不工作**
-   - 检查API密钥设置
-   - 确认API配额充足
-   - 验证网络连接
-
-3. **性能问题**
-   - 调整并发设置
-   - 增加请求间隔
-   - 检查系统资源
-
-### 获取帮助
-```bash
-# 查看帮助
-node dist/index.js --help
-node dist/index.js search --help
-
-# 启用调试日志
-DEBUG=true node dist/index.js search -k "test"
-```
+欢迎提交 Issue 和 Pull Request！
 
 ## 📄 许可证
 
 MIT License
 
-## 🔗 相关文档
-
-- [AI功能详细使用指南](./AI_USAGE.md)
-- [环境变量配置指南](./ENV_CONFIG.md)
-- [项目技术文档](./docs/)
-
 ---
 
-⭐ 如果这个项目对您有帮助，请给它一个星标！
-
-🤝 欢迎提交Issue和Pull Request来改进这个项目。
+**🎉 现在就开始使用AI增强的学术论文爬虫，让研究更高效！**

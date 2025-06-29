@@ -33,6 +33,7 @@ export interface SearchResultItem {
   title: string;
   authors: string[];
   detailUrl: string;
+  abstract?: string; // AI提取可能包含摘要
 }
 
 /**
@@ -61,6 +62,9 @@ export interface AIConfig {
   // AI辅助提取配置
   enableExtraction?: boolean;
   extractionMode?: 'always' | 'fallback' | 'enhance';
+  // Browser-Use 配置
+  useBrowserUse?: boolean;
+  browserUseMode?: 'hybrid' | 'browser-use-only' | 'traditional-only';
 }
 
 /**
