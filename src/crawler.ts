@@ -129,6 +129,7 @@ export class AcademicPaperCrawler {
         logger.info(
           `处理第 ${i + 1}/${searchResults.length} 个结果: ${result.title}`
         );
+        logger.info('result', result);
 
         try {
           const paperInfo = await this.extractPaperDetail(result, keyword);
@@ -224,12 +225,46 @@ export class AcademicPaperCrawler {
             ) as HTMLAnchorElement;
             const detailUrl = linkElement?.href || '';
 
+            // 尝试提取论文链接（标题上方或旁边的链接符号）
+            let paperLink = '';
+            const paperLinkSelectors = [
+              'a[href*="pdf"]',
+              'a[href*="doi"]',
+              'a[href*="paper"]',
+              'a[title*="pdf"]',
+              'a[title*="paper"]',
+              'a[title*="download"]',
+              'a[class*="paper"]',
+              'a[class*="pdf"]',
+              'a[class*="link"]',
+            ];
+
+            for (const selector of paperLinkSelectors) {
+              const paperLinkElement = element.querySelector(
+                selector
+              ) as HTMLAnchorElement;
+              if (
+                paperLinkElement &&
+                paperLinkElement.href &&
+                paperLinkElement.href !== detailUrl
+              ) {
+                paperLink = paperLinkElement.href;
+                break;
+              }
+            }
+
             if (title && detailUrl) {
-              results.push({
+              const result: any = {
                 title: title,
                 authors: authors,
                 detailUrl: detailUrl,
-              });
+              };
+
+              if (paperLink) {
+                result.paperLink = paperLink;
+              }
+
+              results.push(result);
             }
           } catch (error) {
             console.warn('提取搜索结果项时出错:', error);
@@ -349,20 +384,46 @@ export class AcademicPaperCrawler {
     conventionalResults: SearchResultItem[],
     browserUseResults: SearchResultItem[]
   ): SearchResultItem[] {
-    const merged: SearchResultItem[] = [...conventionalResults];
-    const existingTitles = new Set(
-      conventionalResults.map((r) => r.title.toLowerCase())
-    );
+    const merged: SearchResultItem[] = [];
+    const titleMap = new Map<string, SearchResultItem>();
 
+    // 首先添加传统结果
+    for (const result of conventionalResults) {
+      const titleKey = result.title.toLowerCase();
+      titleMap.set(titleKey, result);
+    }
+
+    // 然后合并Browser-Use结果，智能处理重复项
     for (const result of browserUseResults) {
-      // 基于标题的简单去重
-      if (!existingTitles.has(result.title.toLowerCase())) {
-        merged.push(result);
-        existingTitles.add(result.title.toLowerCase());
+      const titleKey = result.title.toLowerCase();
+      const existing = titleMap.get(titleKey);
+
+      if (existing) {
+        // 如果已存在，合并信息，优先使用更完整的信息
+        const mergedResult: SearchResultItem = {
+          title: result.title || existing.title,
+          authors:
+            result.authors.length > 0 ? result.authors : existing.authors,
+          detailUrl: result.detailUrl || existing.detailUrl,
+          paperLink: result.paperLink || existing.paperLink, // 优先使用有paperLink的版本
+          abstract: result.abstract || existing.abstract,
+        };
+        titleMap.set(titleKey, mergedResult);
+
+        // 记录合并信息
+        if (result.paperLink && !existing.paperLink) {
+          logger.info(`合并结果: ${result.title} - Browser-Use提供了论文链接`);
+        } else if (!result.paperLink && existing.paperLink) {
+          logger.info(`合并结果: ${result.title} - 传统方式提供了论文链接`);
+        }
+      } else {
+        // 新结果，直接添加
+        titleMap.set(titleKey, result);
       }
     }
 
-    return merged;
+    // 转换为数组返回
+    return Array.from(titleMap.values());
   }
 
   /**
@@ -439,10 +500,11 @@ export class AcademicPaperCrawler {
       const authors =
         parseAuthors(paperDetail.authorsText) || searchResult.authors;
       const abstract = cleanText(paperDetail.abstract);
-      const paperLink = getAbsoluteUrl(
-        searchResult.detailUrl,
-        paperDetail.paperLink
-      );
+
+      // 优先使用搜索结果中的论文链接，如果没有再使用详情页面提取的链接
+      const paperLink = searchResult.paperLink
+        ? searchResult.paperLink
+        : getAbsoluteUrl(searchResult.detailUrl, paperDetail.paperLink);
 
       // 创建基础论文信息，优先使用详情页面的信息，但如果缺失则使用搜索结果中的信息
       let paperInfo: PaperInfo = {
@@ -453,6 +515,15 @@ export class AcademicPaperCrawler {
         searchKeyword: keyword,
         crawledAt: new Date(),
       };
+
+      // 记录使用的论文链接来源
+      if (searchResult.paperLink) {
+        logger.info(`使用搜索结果中的论文链接: ${searchResult.paperLink}`);
+      } else if (paperDetail.paperLink) {
+        logger.info(`使用详情页面的论文链接: ${paperLink}`);
+      } else {
+        logger.warn('未找到论文链接');
+      }
 
       // 检查Browser-Use模式
       const browserUseMode = this.config.aiConfig?.browserUseMode || 'hybrid';
@@ -577,6 +648,16 @@ export class AcademicPaperCrawler {
         throw new Error('无法提取论文标题');
       }
 
+      // 翻译摘要（如果启用了翻译功能）
+      if (paperInfo.abstract && this.config.aiConfig?.enableTranslation) {
+        try {
+          paperInfo.abstract = await this.translateAbstract(paperInfo.abstract);
+        } catch (error) {
+          logger.warn(`翻译摘要失败: ${(error as Error).message}`);
+          // 翻译失败不影响整体流程，继续使用原摘要
+        }
+      }
+
       return paperInfo;
     } catch (error) {
       logger.error(
@@ -587,6 +668,78 @@ export class AcademicPaperCrawler {
       throw error;
     } finally {
       await detailPage.close();
+    }
+  }
+
+  /**
+   * 翻译摘要内容
+   */
+  private async translateAbstract(abstract: string): Promise<string> {
+    if (!abstract || !this.config.aiConfig?.enableTranslation) {
+      return abstract;
+    }
+
+    try {
+      logger.info('开始翻译摘要...');
+
+      // 创建简单的ChatOpenAI实例用于翻译
+      const { ChatOpenAI } = await import('@langchain/openai');
+      const llm = new ChatOpenAI({
+        apiKey: this.config.aiConfig.apiKey || process.env.OPENAI_API_KEY,
+        modelName: this.config.aiConfig.model,
+        temperature: 0.3,
+        maxTokens: 2000,
+        ...(this.config.aiConfig.baseURL && {
+          openAIApiKey:
+            this.config.aiConfig.apiKey || process.env.OPENAI_API_KEY,
+          configuration: {
+            baseURL: this.config.aiConfig.baseURL,
+          },
+        }),
+      });
+
+      const translationPrompt = `
+请分析以下学术论文摘要的语言，如果是非中文内容，请翻译成中文，并按照以下格式返回：
+
+原文：
+[原始摘要内容]
+
+中文翻译：
+[中文翻译内容]
+
+如果原文已经是中文，请直接返回原文。
+
+摘要内容：
+${abstract}
+
+要求：
+1. 保持学术用语的准确性
+2. 翻译要流畅自然
+3. 专业术语要准确
+4. 如果原文是中文，直接返回原文，不要添加"原文："等标签
+`;
+
+      const response = await llm.invoke([
+        { content: translationPrompt, role: 'user' },
+      ]);
+
+      const translatedContent = response.content.toString().trim();
+
+      // 检查是否需要翻译（如果AI返回的内容包含"原文："说明进行了翻译）
+      if (
+        translatedContent.includes('原文：') &&
+        translatedContent.includes('中文翻译：')
+      ) {
+        logger.info('摘要翻译完成');
+        return translatedContent;
+      } else {
+        // 如果是中文内容，直接返回原文
+        logger.info('摘要已是中文，无需翻译');
+        return abstract;
+      }
+    } catch (error) {
+      logger.warn(`翻译摘要失败: ${(error as Error).message}`);
+      return abstract; // 翻译失败时返回原文
     }
   }
 

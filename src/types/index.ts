@@ -32,7 +32,8 @@ export interface CrawlerConfig {
 export interface SearchResultItem {
   title: string;
   authors: string[];
-  detailUrl: string;
+  detailUrl: string; // 详情页链接，用于获取摘要
+  paperLink?: string; // 真正的论文链接（PDF、DOI等）
   abstract?: string; // AI提取可能包含摘要
 }
 
@@ -65,6 +66,9 @@ export interface AIConfig {
   // Browser-Use 配置
   useBrowserUse?: boolean;
   browserUseMode?: 'hybrid' | 'browser-use-only' | 'traditional-only';
+  // 翻译配置
+  enableTranslation?: boolean;
+  translationMode?: 'always' | 'non-chinese-only' | 'disabled';
 }
 
 /**

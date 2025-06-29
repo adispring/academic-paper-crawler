@@ -51,13 +51,19 @@ class PaperCrawlerApp {
         'Browser-Use模式: hybrid(混合), browser-use-only(仅Browser-Use), traditional-only(仅传统)',
         'hybrid'
       )
-      .option('--ai-model <model>', 'AI模型名称', 'gpt-3.5-turbo')
+      .option('--ai-model <model>', 'AI模型名称', 'gpt-4o-mini')
       .option(
         '--ai-api-key <key>',
         'OpenAI API密钥 (或设置 OPENAI_API_KEY 环境变量)'
       )
       .option('--ai-temperature <temp>', 'AI温度设置', '0.3')
       .option('--ai-max-tokens <tokens>', 'AI最大令牌数', '1000')
+      .option('--translate', '启用摘要翻译功能（非中文摘要翻译为中文）')
+      .option(
+        '--translate-mode <mode>',
+        '翻译模式：always(总是翻译), non-chinese-only(仅翻译非中文), disabled(禁用)',
+        'non-chinese-only'
+      )
       .action(async (options) => {
         await this.handleSearchCommand(options);
       });
@@ -83,13 +89,19 @@ class PaperCrawlerApp {
         'Browser-Use模式: hybrid(混合), browser-use-only(仅Browser-Use), traditional-only(仅传统)',
         'hybrid'
       )
-      .option('--ai-model <model>', 'AI模型名称', 'gpt-3.5-turbo')
+      .option('--ai-model <model>', 'AI模型名称', 'gpt-4o-mini')
       .option(
         '--ai-api-key <key>',
         'OpenAI API密钥 (或设置 OPENAI_API_KEY 环境变量)'
       )
       .option('--ai-temperature <temp>', 'AI温度设置', '0.3')
       .option('--ai-max-tokens <tokens>', 'AI最大令牌数', '1000')
+      .option('--translate', '启用摘要翻译功能（非中文摘要翻译为中文）')
+      .option(
+        '--translate-mode <mode>',
+        '翻译模式：always(总是翻译), non-chinese-only(仅翻译非中文), disabled(禁用)',
+        'non-chinese-only'
+      )
       .action(async (options) => {
         await this.handleBatchCommand(options);
       });
@@ -118,11 +130,12 @@ class PaperCrawlerApp {
         options.aiExtract ||
         options.aiExtractFallback ||
         options.aiExtractEnhance ||
-        options.browserUse
+        options.browserUse ||
+        options.translate
       ) {
         config.aiConfig = {
           enabled: true,
-          model: options.aiModel || process.env.AI_MODEL || 'gpt-3.5-turbo',
+          model: options.aiModel || process.env.AI_MODEL || 'gpt-4o-mini',
           apiKey: options.aiApiKey || process.env.OPENAI_API_KEY,
           baseURL: process.env.OPENAI_BASE_URL,
           temperature: parseFloat(
@@ -150,6 +163,9 @@ class PaperCrawlerApp {
           // Browser-Use 配置
           useBrowserUse: options.browserUse || false,
           browserUseMode: options.browserUseMode || 'hybrid',
+          // 翻译配置
+          enableTranslation: options.translate || false,
+          translationMode: options.translateMode || 'non-chinese-only',
         };
 
         logger.info('AI 功能已启用');
@@ -193,6 +209,22 @@ class PaperCrawlerApp {
         if (process.env.OPENAI_BASE_URL) {
           logger.info(
             `使用自定义 API 基础 URL: ${process.env.OPENAI_BASE_URL}`
+          );
+        }
+
+        // 翻译功能
+        if (options.translate) {
+          logger.info('✓ 摘要翻译功能已启用');
+          const modeDesc = {
+            always: '总是翻译',
+            'non-chinese-only': '仅翻译非中文内容',
+            disabled: '禁用翻译',
+          };
+          logger.info(
+            `翻译模式: ${
+              modeDesc[options.translateMode as keyof typeof modeDesc] ||
+              '仅翻译非中文内容'
+            }`
           );
         }
       }
@@ -251,11 +283,12 @@ class PaperCrawlerApp {
         options.aiExtract ||
         options.aiExtractFallback ||
         options.aiExtractEnhance ||
-        options.browserUse
+        options.browserUse ||
+        options.translate
       ) {
         config.aiConfig = {
           enabled: true,
-          model: options.aiModel || process.env.AI_MODEL || 'gpt-3.5-turbo',
+          model: options.aiModel || process.env.AI_MODEL || 'gpt-4o-mini',
           apiKey: options.aiApiKey || process.env.OPENAI_API_KEY,
           baseURL: process.env.OPENAI_BASE_URL,
           temperature: parseFloat(
@@ -283,6 +316,9 @@ class PaperCrawlerApp {
           // Browser-Use 配置
           useBrowserUse: options.browserUse || false,
           browserUseMode: options.browserUseMode || 'hybrid',
+          // 翻译配置
+          enableTranslation: options.translate || false,
+          translationMode: options.translateMode || 'non-chinese-only',
         };
 
         logger.info('批量搜索 AI 功能已启用');
@@ -311,6 +347,22 @@ class PaperCrawlerApp {
           logger.info('✓ Browser-Use 智能浏览器操作已启用');
           logger.info(
             `Browser-Use 模式: ${options.browserUseMode || 'hybrid'}`
+          );
+        }
+
+        // 翻译功能
+        if (options.translate) {
+          logger.info('✓ 摘要翻译功能已启用');
+          const modeDesc = {
+            always: '总是翻译',
+            'non-chinese-only': '仅翻译非中文内容',
+            disabled: '禁用翻译',
+          };
+          logger.info(
+            `翻译模式: ${
+              modeDesc[options.translateMode as keyof typeof modeDesc] ||
+              '仅翻译非中文内容'
+            }`
           );
         }
 

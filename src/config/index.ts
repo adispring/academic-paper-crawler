@@ -30,6 +30,9 @@ export const defaultCrawlerConfig: CrawlerConfig = {
     // Browser-Use 配置
     useBrowserUse: false,
     browserUseMode: 'hybrid',
+    // 翻译配置
+    enableTranslation: false,
+    translationMode: 'non-chinese-only',
   },
 };
 
@@ -53,6 +56,9 @@ export const defaultAIConfig: AIConfig = {
   // Browser-Use 配置
   useBrowserUse: false,
   browserUseMode: 'hybrid',
+  // 翻译配置
+  enableTranslation: false,
+  translationMode: 'non-chinese-only',
 };
 
 /**
