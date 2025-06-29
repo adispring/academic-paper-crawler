@@ -6,6 +6,7 @@ import {
   AIConfig,
   AIAnalysisResult,
   AIAnalysisType,
+  SearchResultItem,
 } from '../types';
 import { aiPrompts } from '../config';
 import { logger } from '../utils';
