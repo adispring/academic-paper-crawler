@@ -153,7 +153,11 @@ export class AcademicPaperCrawler {
       }
 
       // 执行 AI 分析（如果启用）
-      if (this.aiAnalyzer && papers.length > 0) {
+      if (
+        this.aiAnalyzer &&
+        papers.length > 0 &&
+        this.config.aiConfig?.enableAnalysis
+      ) {
         logger.info('开始执行 AI 分析...');
         try {
           const enhancedPapers = await this.aiAnalyzer.analyzeMultiplePapers(
@@ -165,6 +169,12 @@ export class AcademicPaperCrawler {
           logger.error(`AI 分析失败: ${(error as Error).message}`);
           return papers; // 返回未增强的论文
         }
+      } else if (
+        this.aiAnalyzer &&
+        papers.length > 0 &&
+        !this.config.aiConfig?.enableAnalysis
+      ) {
+        logger.info('⚠ AI论文分析功能已被禁用，跳过分析步骤');
       }
     } catch (error) {
       const errorMsg = `搜索过程中发生错误: ${(error as Error).message}`;
@@ -380,6 +390,219 @@ export class AcademicPaperCrawler {
   }
 
   /**
+   * 检测虚拟列表并返回相关信息
+   */
+  private async detectVirtualList(page: Page): Promise<{
+    isVirtualList: boolean;
+    expectedTotal: number;
+    framework?: string;
+    virtualScrollerHeight?: number;
+  }> {
+    return await page.evaluate(() => {
+      // 检测虚拟列表组件
+      const hasVirtualScroller = !!document.querySelector('virtual-scroller');
+      const hasTotalPadding = !!document.querySelector(
+        '.total-padding, [class*="total-padding"]'
+      );
+      const hasScrollableContent = !!document.querySelector(
+        '.scrollable-content, [class*="scrollable-content"]'
+      );
+
+      // 检测期望总数
+      let expectedTotal = 0;
+      const contentTabs = document.querySelectorAll(
+        '[role="tab"], .tab, .nav-tab, .tab-link'
+      );
+      for (const tab of Array.from(contentTabs)) {
+        const tabText = tab.textContent || '';
+        const contentMatch = tabText.match(/Content\s*\((\d+)\)/);
+        if (contentMatch) {
+          expectedTotal = parseInt(contentMatch[1]);
+          break;
+        }
+      }
+
+      // 检测框架
+      let framework: string | undefined;
+      if (hasVirtualScroller) {
+        framework = 'Angular CDK Virtual Scrolling';
+      }
+
+      // 获取虚拟滚动容器高度
+      let virtualScrollerHeight = 0;
+      if (hasVirtualScroller) {
+        const virtualScroller = document.querySelector(
+          'virtual-scroller'
+        ) as HTMLElement;
+        if (virtualScroller) {
+          virtualScrollerHeight = virtualScroller.scrollHeight;
+        }
+      }
+
+      const isVirtualList =
+        hasVirtualScroller || (hasTotalPadding && hasScrollableContent);
+
+      return {
+        isVirtualList,
+        expectedTotal,
+        framework,
+        virtualScrollerHeight,
+      };
+    });
+  }
+
+  /**
+   * 虚拟列表专用的滚动加载处理
+   */
+  private async loadVirtualListResults(
+    page: Page,
+    expectedTotal: number
+  ): Promise<void> {
+    logger.info(`开始处理虚拟列表滚动加载，期望总数: ${expectedTotal}`);
+
+    const scrollConfig = this.config.scrollConfig;
+
+    if (!scrollConfig?.virtualListOptimization) {
+      logger.info('虚拟列表优化已禁用，将使用传统滚动策略处理');
+      // 这里不返回，而是继续使用传统的滚动逻辑
+      return;
+    }
+
+    const collectedItems = new Set<string>();
+    let scrollCount = 0;
+    const maxScrolls = Math.max(30, Math.ceil(expectedTotal / 4)); // 根据期望总数调整最大滚动次数
+    let noNewItemsCount = 0;
+    const maxNoNewRetries = scrollConfig.virtualListMaxRetries || 6;
+
+    while (scrollCount < maxScrolls && noNewItemsCount < maxNoNewRetries) {
+      // 收集当前可见的项目
+      const currentItems = await page.evaluate(() => {
+        const items: string[] = [];
+
+        // 针对SIGCHI网站的选择器
+        const selectors = [
+          'content-card',
+          '.search-item',
+          '.result-item',
+          '.paper-item',
+          'article',
+          '[class*="card"]',
+        ];
+
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            Array.from(elements).forEach((el) => {
+              // 提取唯一标识符（通常是详情页链接）
+              const detailLink = el.querySelector(
+                'a[href*="content"], a[href*="program"]'
+              );
+              if (detailLink) {
+                const href = (detailLink as HTMLAnchorElement).href;
+                if (href) {
+                  items.push(href);
+                }
+              }
+            });
+            break; // 找到有效选择器就停止
+          }
+        }
+
+        return items;
+      });
+
+      // 检查新收集的项目
+      const newItemsCount = currentItems.filter(
+        (item) => !collectedItems.has(item)
+      ).length;
+
+      if (newItemsCount > 0) {
+        currentItems.forEach((item) => collectedItems.add(item));
+        noNewItemsCount = 0;
+        logger.info(
+          `虚拟列表收集: 新增 ${newItemsCount} 项，总计 ${
+            collectedItems.size
+          }/${expectedTotal} (${Math.round(
+            (collectedItems.size / expectedTotal) * 100
+          )}%)`
+        );
+      } else {
+        noNewItemsCount++;
+        logger.info(`虚拟列表: 连续 ${noNewItemsCount} 次无新项目`);
+      }
+
+      // 如果已收集到期望数量的阈值以上，可以提前结束
+      const threshold = scrollConfig.virtualListCollectionThreshold || 0.85;
+      if (collectedItems.size >= expectedTotal * threshold) {
+        logger.info(
+          `虚拟列表: 已收集 ${
+            collectedItems.size
+          }/${expectedTotal} (${Math.round(
+            (collectedItems.size / expectedTotal) * 100
+          )}%)，达到阈值 ${Math.round(threshold * 100)}%，提前结束`
+        );
+        break;
+      }
+
+      if (noNewItemsCount >= maxNoNewRetries) {
+        logger.info('虚拟列表: 已达到最大无新项目重试次数');
+        break;
+      }
+
+      // 执行针对虚拟列表优化的滚动
+      await this.performVirtualListScroll(page);
+
+      // 虚拟列表需要更长的等待时间让DOM更新
+      const scrollDelay =
+        scrollConfig?.virtualListScrollDelay ||
+        scrollConfig?.scrollDelay ||
+        3500;
+      await sleep(scrollDelay);
+      scrollCount++;
+    }
+
+    logger.info(
+      `虚拟列表收集完成: ${collectedItems.size}/${expectedTotal} 项，共滚动 ${scrollCount} 次`
+    );
+  }
+
+  /**
+   * 虚拟列表专用的滚动策略
+   */
+  private async performVirtualListScroll(page: Page): Promise<void> {
+    // 虚拟列表需要更小、更慢的滚动步长
+    await page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        const viewportHeight = window.innerHeight;
+        const scrollDistance = Math.floor(viewportHeight / 4); // 每次滚动1/4视窗，比普通滚动更小
+        const currentY = window.scrollY;
+        const targetY = currentY + scrollDistance;
+        const duration = 1000 + Math.random() * 500; // 1-1.5s，比普通滚动更慢
+        let startTime: number;
+
+        function animate(currentTime: number) {
+          if (!startTime) startTime = currentTime;
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          // 使用非常平缓的缓动函数
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          const currentScrollY = currentY + (targetY - currentY) * easeOut;
+          window.scrollTo(0, currentScrollY);
+
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            resolve();
+          }
+        }
+
+        requestAnimationFrame(animate);
+      });
+    });
+  }
+
+  /**
    * 处理无限滚动加载，获取所有搜索结果
    */
   private async loadAllSearchResults(page: Page): Promise<void> {
@@ -391,6 +614,20 @@ export class AcademicPaperCrawler {
     }
 
     logger.info('开始处理分页滚动加载...');
+
+    // 首先检测是否为虚拟列表
+    const virtualListInfo = await this.detectVirtualList(page);
+
+    if (virtualListInfo.isVirtualList) {
+      logger.info(
+        `检测到虚拟列表 (${virtualListInfo.framework})，期望项目数: ${virtualListInfo.expectedTotal}`
+      );
+      await this.loadVirtualListResults(page, virtualListInfo.expectedTotal);
+      return;
+    }
+
+    // 传统列表的滚动逻辑（保持原有逻辑）
+    logger.info('检测到传统列表，使用标准滚动策略');
 
     let previousResultCount = 0;
     let currentResultCount = 0;

@@ -79,6 +79,15 @@ class PaperCrawlerApp {
         '800-1800'
       )
       .option('--backscroll-chance <probability>', '回看概率 (0-1)', '0.3')
+      // 虚拟列表优化选项
+      .option('--no-virtual-list-optimization', '禁用虚拟列表优化')
+      .option('--virtual-list-delay <ms>', '虚拟列表滚动延迟(毫秒)', '3500')
+      .option('--virtual-list-max-retries <count>', '虚拟列表最大重试次数', '6')
+      .option(
+        '--virtual-list-threshold <threshold>',
+        '虚拟列表收集完成阈值 (0-1)',
+        '0.85'
+      )
       .action(async (options) => {
         await this.handleSearchCommand(options);
       });
@@ -132,6 +141,15 @@ class PaperCrawlerApp {
         '800-1800'
       )
       .option('--backscroll-chance <probability>', '回看概率 (0-1)', '0.3')
+      // 虚拟列表优化选项
+      .option('--no-virtual-list-optimization', '禁用虚拟列表优化')
+      .option('--virtual-list-delay <ms>', '虚拟列表滚动延迟(毫秒)', '3500')
+      .option('--virtual-list-max-retries <count>', '虚拟列表最大重试次数', '6')
+      .option(
+        '--virtual-list-threshold <threshold>',
+        '虚拟列表收集完成阈值 (0-1)',
+        '0.85'
+      )
       .action(async (options) => {
         await this.handleBatchCommand(options);
       });
@@ -156,9 +174,8 @@ class PaperCrawlerApp {
         scrollConfig: this.parseScrollConfig(options),
       };
 
-      // 配置AI选项
+      // 配置AI选项（默认禁用AI论文分析功能）
       if (
-        options.ai ||
         options.aiExtract ||
         options.aiExtractFallback ||
         options.aiExtractEnhance ||
@@ -181,6 +198,8 @@ class PaperCrawlerApp {
             'extract_keywords' as any,
             'relevance' as any,
           ],
+          // AI论文分析配置（默认禁用）
+          enableAnalysis: false, // 强制禁用AI论文分析
           // AI辅助提取配置
           enableExtraction:
             options.aiExtract ||
@@ -203,9 +222,9 @@ class PaperCrawlerApp {
         logger.info('AI 功能已启用');
         logger.info(`使用模型: ${config.aiConfig.model}`);
 
-        // AI分析功能
+        // AI分析功能（默认禁用）
         if (options.ai) {
-          logger.info('✓ AI论文分析功能已启用');
+          logger.warn('⚠ AI论文分析功能已被禁用（如需启用请联系开发者）');
         }
 
         // AI辅助提取功能
@@ -266,6 +285,24 @@ class PaperCrawlerApp {
         logger.info('✓ 分页滚动加载已启用');
         logger.info(`最大滚动次数: ${config.scrollConfig.maxScrolls}`);
         logger.info(`滚动延迟: ${config.scrollConfig.scrollDelay}ms`);
+
+        // 显示虚拟列表优化状态
+        if (config.scrollConfig.virtualListOptimization) {
+          logger.info('✓ 虚拟列表优化已启用');
+          logger.info(
+            `虚拟列表滚动延迟: ${config.scrollConfig.virtualListScrollDelay}ms`
+          );
+          logger.info(
+            `虚拟列表最大重试: ${config.scrollConfig.virtualListMaxRetries}次`
+          );
+          logger.info(
+            `虚拟列表收集阈值: ${Math.round(
+              config.scrollConfig.virtualListCollectionThreshold * 100
+            )}%`
+          );
+        } else {
+          logger.info('⚠ 虚拟列表优化已禁用');
+        }
       } else {
         logger.info('⚠ 分页滚动加载已禁用（仅获取首屏结果）');
       }
@@ -320,9 +357,8 @@ class PaperCrawlerApp {
         scrollConfig: this.parseScrollConfig(options),
       };
 
-      // 配置AI选项（与search命令相同）
+      // 配置AI选项（与search命令相同，默认禁用AI论文分析功能）
       if (
-        options.ai ||
         options.aiExtract ||
         options.aiExtractFallback ||
         options.aiExtractEnhance ||
@@ -345,6 +381,8 @@ class PaperCrawlerApp {
             'extract_keywords' as any,
             'relevance' as any,
           ],
+          // AI论文分析配置（默认禁用）
+          enableAnalysis: false, // 强制禁用AI论文分析
           // AI辅助提取配置
           enableExtraction:
             options.aiExtract ||
@@ -367,9 +405,9 @@ class PaperCrawlerApp {
         logger.info('批量搜索 AI 功能已启用');
         logger.info(`使用模型: ${config.aiConfig.model}`);
 
-        // AI分析功能
+        // AI分析功能（默认禁用）
         if (options.ai) {
-          logger.info('✓ AI论文分析功能已启用');
+          logger.warn('⚠ AI论文分析功能已被禁用（如需启用请联系开发者）');
         }
 
         // AI辅助提取功能
@@ -430,6 +468,24 @@ class PaperCrawlerApp {
         logger.info('✓ 分页滚动加载已启用');
         logger.info(`最大滚动次数: ${config.scrollConfig.maxScrolls}`);
         logger.info(`滚动延迟: ${config.scrollConfig.scrollDelay}ms`);
+
+        // 显示虚拟列表优化状态
+        if (config.scrollConfig.virtualListOptimization) {
+          logger.info('✓ 虚拟列表优化已启用');
+          logger.info(
+            `虚拟列表滚动延迟: ${config.scrollConfig.virtualListScrollDelay}ms`
+          );
+          logger.info(
+            `虚拟列表最大重试: ${config.scrollConfig.virtualListMaxRetries}次`
+          );
+          logger.info(
+            `虚拟列表收集阈值: ${Math.round(
+              config.scrollConfig.virtualListCollectionThreshold * 100
+            )}%`
+          );
+        } else {
+          logger.info('⚠ 虚拟列表优化已禁用');
+        }
       } else {
         logger.info('⚠ 分页滚动加载已禁用（仅获取首屏结果）');
       }
@@ -536,6 +592,13 @@ class PaperCrawlerApp {
       stepDelayMax: stepDelay.max,
       randomBackscroll: true, // 默认启用
       backscrollChance: parseFloat(options.backscrollChance || '0.3'),
+      // 虚拟列表优化配置
+      virtualListOptimization: !options.noVirtualListOptimization, // --no-virtual-list-optimization 选项
+      virtualListScrollDelay: parseInt(options.virtualListDelay || '3500'),
+      virtualListMaxRetries: parseInt(options.virtualListMaxRetries || '6'),
+      virtualListCollectionThreshold: parseFloat(
+        options.virtualListThreshold || '0.85'
+      ),
     };
   }
 

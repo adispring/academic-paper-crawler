@@ -22,6 +22,11 @@ export const defaultScrollConfig: ScrollConfig = {
   stepDelayMax: 1800, // 最大延迟1.8秒
   randomBackscroll: true, // 启用随机回看
   backscrollChance: 0.3, // 30%概率回看
+  // 虚拟列表优化默认配置
+  virtualListOptimization: true, // 默认启用虚拟列表优化
+  virtualListScrollDelay: 3500, // 虚拟列表滚动后等待3.5秒
+  virtualListMaxRetries: 6, // 虚拟列表最大重试6次
+  virtualListCollectionThreshold: 0.85, // 收集到85%即可结束
 };
 
 /**
@@ -49,6 +54,8 @@ export const defaultCrawlerConfig: CrawlerConfig = {
       AIAnalysisType.EXTRACT_KEYWORDS,
       AIAnalysisType.RELEVANCE,
     ],
+    // AI论文分析配置
+    enableAnalysis: false, // 默认禁用AI论文分析
     // AI辅助提取配置
     enableExtraction: false,
     extractionMode: 'fallback',
@@ -75,6 +82,8 @@ export const defaultAIConfig: AIConfig = {
     AIAnalysisType.EXTRACT_KEYWORDS,
     AIAnalysisType.RELEVANCE,
   ],
+  // AI论文分析配置
+  enableAnalysis: false, // 默认禁用AI论文分析
   // AI辅助提取配置
   enableExtraction: false,
   extractionMode: 'fallback',

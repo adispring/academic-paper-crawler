@@ -380,8 +380,13 @@ JSON格式示例：
   "title": "论文标题",
   "authors": ["作者1", "作者2"],
   "abstract": "论文摘要内容...",
-  "paperLink": "https://..."
+  "paperLink": "真实的论文链接（如果找到的话）"
 }
+
+重要警告：
+🚨 绝对禁止生成虚假或示例链接！
+🚨 如果没有找到真实的论文链接，请省略paperLink字段！
+🚨 不要使用占位符如"XXXXXX"、"1234567"等生成虚假DOI！
 `;
 
       const response = await this.invokeWithRetry(prompt);
@@ -401,6 +406,17 @@ JSON格式示例：
       }
 
       // 验证和清理提取的信息
+      // 验证并清理论文链接
+      let paperLink = '';
+      const extractedLink = this.cleanText(
+        extractedInfo.paperLink || fallbackInfo?.paperLink || ''
+      );
+      if (extractedLink && this.isValidPaperLink(extractedLink)) {
+        paperLink = extractedLink;
+      } else if (extractedLink) {
+        logger.warn(`AI提取到无效论文链接，已忽略: ${extractedLink}`);
+      }
+
       const paperInfo: PaperInfo = {
         title: this.cleanText(extractedInfo.title || fallbackInfo?.title || ''),
         authors: Array.isArray(extractedInfo.authors)
@@ -411,9 +427,7 @@ JSON格式示例：
         abstract: this.cleanText(
           extractedInfo.abstract || fallbackInfo?.abstract || ''
         ),
-        paperLink: this.cleanText(
-          extractedInfo.paperLink || fallbackInfo?.paperLink || ''
-        ),
+        paperLink: paperLink,
         searchKeyword: searchKeyword,
         crawledAt: new Date(),
       };
@@ -524,6 +538,57 @@ ${htmlContent ? `\n参考HTML内容:\n${htmlContent.substring(0, 4000)}` : ''}
       .trim() // 去除首尾空白
       .replace(/[""'']/g, '"') // 标准化引号
       .replace(/[…]/g, '...'); // 标准化省略号
+  }
+
+  /**
+   * 验证论文链接是否有效（不是虚假或示例链接）
+   */
+  private isValidPaperLink(link: string): boolean {
+    if (!link || link.length === 0) {
+      return false;
+    }
+
+    // 检查是否是虚假或示例链接
+    const invalidPatterns = [
+      /XXXXXX/i,
+      /123456\d/i, // 匹配 1234567, 1234568 等虚假数字
+      /example/i,
+      /placeholder/i,
+      /sample/i,
+      /\.\.\.$/, // 以...结尾的占位符
+      /^https?:\/\/[^\/]*\/?$/, // 只有域名的不完整链接
+    ];
+
+    for (const pattern of invalidPatterns) {
+      if (pattern.test(link)) {
+        logger.warn(`AI生成虚假链接，已过滤: ${link}`);
+        return false;
+      }
+    }
+
+    // 检查是否是有效的学术资源链接
+    const validDomains = [
+      'dl.acm.org',
+      'doi.org',
+      'arxiv.org',
+      'ieee.org',
+      'springer.com',
+      'sciencedirect.com',
+      'researchgate.net',
+      'semanticscholar.org',
+      'acm.org',
+      'proceedings.',
+    ];
+
+    const hasValidDomain = validDomains.some((domain) => link.includes(domain));
+
+    // 检查是否有有效的DOI格式 (10.xxxx/xxxx)
+    const hasValidDOI = /10\.\d{4,}\/[^\s]+/.test(link);
+
+    // 检查是否有PDF扩展名
+    const isPDF = /\.pdf(\?|$)/i.test(link);
+
+    return hasValidDomain || hasValidDOI || isPDF;
   }
 
   /**

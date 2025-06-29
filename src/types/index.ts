@@ -45,6 +45,11 @@ export interface ScrollConfig {
   stepDelayMax: number; // 步骤间最大延迟(ms)
   randomBackscroll: boolean; // 是否随机回看
   backscrollChance: number; // 回看概率(0-1)
+  // 虚拟列表优化配置
+  virtualListOptimization: boolean; // 是否启用虚拟列表优化
+  virtualListScrollDelay: number; // 虚拟列表专用滚动延迟(ms)
+  virtualListMaxRetries: number; // 虚拟列表最大重试次数
+  virtualListCollectionThreshold: number; // 虚拟列表收集完成阈值(0-1)
 }
 
 /**
@@ -81,6 +86,8 @@ export interface AIConfig {
   enabled: boolean;
   baseURL?: string;
   analysisTypes?: AIAnalysisType[];
+  // AI论文分析配置
+  enableAnalysis?: boolean; // 是否启用AI论文分析功能（默认禁用）
   // AI辅助提取配置
   enableExtraction?: boolean;
   extractionMode?: 'always' | 'fallback' | 'enhance';
