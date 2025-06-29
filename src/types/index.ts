@@ -8,6 +8,7 @@ export interface PaperInfo {
   paperLink: string;
   searchKeyword: string;
   crawledAt: Date;
+  aiAnalysis?: AIAnalysisResult;
 }
 
 /**
@@ -22,6 +23,7 @@ export interface CrawlerConfig {
   outputFormat: 'csv' | 'json';
   outputPath: string;
   userAgent: string;
+  aiConfig?: AIConfig;
 }
 
 /**
@@ -54,4 +56,44 @@ export interface AIConfig {
   temperature: number;
   maxTokens: number;
   enabled: boolean;
+  baseURL?: string;
+  analysisTypes?: AIAnalysisType[];
+  // AI辅助提取配置
+  enableExtraction?: boolean;
+  extractionMode?: 'always' | 'fallback' | 'enhance';
+}
+
+/**
+ * AI 分析类型枚举
+ */
+export enum AIAnalysisType {
+  SUMMARIZE = 'summarize',
+  CLASSIFY = 'classify',
+  EXTRACT_KEYWORDS = 'extract_keywords',
+  SENTIMENT = 'sentiment',
+  RELEVANCE = 'relevance',
+}
+
+/**
+ * AI 分析结果接口
+ */
+export interface AIAnalysisResult {
+  summary?: string;
+  classification?: string;
+  keywords?: string[];
+  sentiment?: 'positive' | 'negative' | 'neutral';
+  relevanceScore?: number;
+  processedAt: Date;
+  model: string;
+}
+
+/**
+ * LangGraph 节点状态接口
+ */
+export interface GraphState {
+  paperInfo: PaperInfo;
+  analysisType: AIAnalysisType;
+  result?: AIAnalysisResult;
+  error?: string;
+  retry?: number;
 }
