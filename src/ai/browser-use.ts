@@ -424,7 +424,28 @@ SIGCHI网站特点：
         const hasMoreContent = await this.scrollToNextPage(page);
 
         if (!hasMoreContent) {
-          logger.info('❌ 无法滚动获取更多内容，停止处理');
+          logger.info('📄 已到达页面底部，执行最后一次内容收集...');
+
+          // 即使无法继续滚动，也要收集当前页面的内容
+          const beforeCount = allResults.length;
+          await this.collectCurrentPageItems(
+            page,
+            searchKeyword,
+            allResults,
+            processedUrls
+          );
+          const afterCount = allResults.length;
+          const newItemsFound = afterCount - beforeCount;
+
+          if (newItemsFound > 0) {
+            logger.info(
+              `✅ 最后一页收集完成！新增 ${newItemsFound} 个项目，总计 ${allResults.length} 个`
+            );
+          } else {
+            logger.info('ℹ️ 最后一页无新项目');
+          }
+
+          logger.info('🏁 页面内容收集完成，停止处理');
           break;
         }
 
