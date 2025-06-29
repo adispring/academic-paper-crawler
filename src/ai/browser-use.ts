@@ -753,6 +753,7 @@ ${
           : fallbackInfo?.authors || [],
         abstract: abstractText,
         paperLink: paperLink,
+        detailUrl: fallbackInfo?.detailUrl || '', // 添加详情页URL
         searchKeyword: searchKeyword,
         crawledAt: new Date(),
       };

@@ -152,6 +152,7 @@ export class AcademicPaperCrawler {
               authors: result.authors,
               abstract: result.abstract || '', // 使用搜索结果中的摘要（如果有）
               paperLink: result.detailUrl, // 快速模式下使用详情页链接作为论文链接
+              detailUrl: result.detailUrl, // 添加详情页URL
               searchKeyword: keyword,
               crawledAt: new Date(),
             };
@@ -1254,6 +1255,7 @@ export class AcademicPaperCrawler {
         authors,
         abstract: abstract || (searchResult as any).abstract || '', // 使用搜索结果中的摘要作为后备
         paperLink,
+        detailUrl: searchResult.detailUrl, // 添加详情页URL
         searchKeyword: keyword,
         crawledAt: new Date(),
       };
@@ -1398,6 +1400,21 @@ export class AcademicPaperCrawler {
         }
       }
 
+      // 🎯 在收集完 abstract 和 paperLink 后，打印完整的 result
+      logger.info('📄 完整论文信息收集完成:');
+      logger.info(`📄 标题: ${paperInfo.title}`);
+      logger.info(`📄 作者: ${paperInfo.authors.join(', ')}`);
+      logger.info(
+        `📄 摘要: ${paperInfo.abstract.substring(0, 200)}${
+          paperInfo.abstract.length > 200 ? '...' : ''
+        }`
+      );
+      logger.info(`📄 论文链接: ${paperInfo.paperLink}`);
+      logger.info(`📄 详情页链接: ${paperInfo.detailUrl}`);
+      logger.info(`📄 搜索关键词: ${paperInfo.searchKeyword}`);
+      logger.info(`📄 抓取时间: ${paperInfo.crawledAt.toISOString()}`);
+      logger.info('📄 ====================================');
+
       return paperInfo;
     } catch (error) {
       logger.error(
@@ -1540,6 +1557,7 @@ ${abstract}
       { id: 'authors', title: '作者' },
       { id: 'abstract', title: '摘要' },
       { id: 'paperLink', title: '论文链接' },
+      { id: 'detailUrl', title: '详情页链接' },
       { id: 'searchKeyword', title: '搜索关键词' },
       { id: 'crawledAt', title: '抓取时间' },
     ];
@@ -1570,6 +1588,7 @@ ${abstract}
         authors: paper.authors.join('; '),
         abstract: paper.abstract,
         paperLink: paper.paperLink,
+        detailUrl: paper.detailUrl,
         searchKeyword: paper.searchKeyword,
         crawledAt: paper.crawledAt.toISOString(),
       };

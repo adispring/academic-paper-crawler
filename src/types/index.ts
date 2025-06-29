@@ -6,6 +6,7 @@ export interface PaperInfo {
   authors: string[];
   abstract: string;
   paperLink: string;
+  detailUrl: string; // 论文详情页链接
   searchKeyword: string;
   crawledAt: Date;
   aiAnalysis?: AIAnalysisResult;

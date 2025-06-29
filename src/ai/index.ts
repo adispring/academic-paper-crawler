@@ -428,6 +428,7 @@ JSON格式示例：
           extractedInfo.abstract || fallbackInfo?.abstract || ''
         ),
         paperLink: paperLink,
+        detailUrl: fallbackInfo?.detailUrl || '', // 添加详情页URL
         searchKeyword: searchKeyword,
         crawledAt: new Date(),
       };
