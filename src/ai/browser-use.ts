@@ -152,9 +152,12 @@ ${pageContext}
 SIGCHI网站特点：
 1. 每个论文是<content-card>组件
 2. 主要链接：<a class="link-block card-container">指向详情页  
-3. 外部链接按钮：<link-list-btn><button>触发外部链接覆盖层
-4. 论文标题在 .card-data-name .name 中
-5. 作者列表在 person-list 中的 a[person-link] 元素中
+3. 论文标题在 .card-data-name .name 中
+4. 作者列表在 person-list 中的 a[person-link] 元素中
+
+重要说明：
+- 不需要提取外部论文链接，这些将在详情页中获取
+- 只需要提取基本信息和详情页链接即可
 
 提取步骤：
 1. 识别当前可见的所有<content-card>论文条目
@@ -162,22 +165,18 @@ SIGCHI网站特点：
    - 论文标题（.card-data-name .name）
    - 作者列表（person-list 中的 a[person-link] 元素）
    - 详情页链接（.link-block.card-container 的 href）
-   - 外部论文链接（如果能找到的话）
 
 返回JSON格式：
 [
   {
     "title": "论文完整标题",
     "authors": ["作者1", "作者2", "作者3"],
-    "detailUrl": "https://programs.sigchi.org/...",
-    "paperLink": "真实的外部论文链接（如果找到的话）" 
+    "detailUrl": "https://programs.sigchi.org/..."
   }
 ]
 
 重要提醒：
 - 只提取当前页面可见的项目，不要想象或推测其他项目
-- 如果没有找到真实的外部论文链接，请省略paperLink字段
-- 绝对不要生成虚假或示例链接
 - 只返回JSON数组，不要包含其他说明文字
 `;
 
@@ -214,14 +213,6 @@ SIGCHI网站特点：
                 : [],
               detailUrl: this.cleanText(item.detailUrl),
             };
-
-            // 添加论文链接（如果存在且有效）
-            if (item.paperLink && typeof item.paperLink === 'string') {
-              const cleanedLink = this.cleanText(item.paperLink);
-              if (this.isValidPaperLink(cleanedLink)) {
-                searchResult.paperLink = cleanedLink;
-              }
-            }
 
             searchResults.push(searchResult);
           }
@@ -391,7 +382,7 @@ SIGCHI网站特点：
 
       // 设置最大滚动次数为固定值
       const expectedTotal = await this.getExpectedTotalCount(page);
-      const maxScrolls = 50; // 固定为50次滚动
+      const maxScrolls = 100; // 固定为50次滚动
       let scrollCount = 0;
 
       logger.info(
@@ -529,9 +520,6 @@ SIGCHI网站特点：
           );
           logger.info(`   👥 作者: ${result.authors.join(', ')}`);
           logger.info(`   🔗 链接: ${result.detailUrl}`);
-          if (result.paperLink) {
-            logger.info(`   📄 论文: ${result.paperLink}`);
-          }
         });
       }
 
@@ -587,7 +575,7 @@ SIGCHI网站特点：
         }
 
         // 如果都找不到，返回默认值
-        return 50; // 默认假设50篇文章
+        return 100; // 默认假设50篇文章
       });
 
       logger.info(`🎯 检测到页面预期包含 ${expectedCount} 篇文章`);
@@ -596,7 +584,7 @@ SIGCHI网站特点：
       logger.warn(
         `获取预期文章总数失败，使用默认值: ${(error as Error).message}`
       );
-      return 50; // 默认值
+      return 100; // 默认值
     }
   }
 

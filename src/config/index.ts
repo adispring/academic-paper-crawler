@@ -10,7 +10,7 @@ import {
  */
 export const defaultScrollConfig: ScrollConfig = {
   enabled: true,
-  maxScrolls: 50,
+  maxScrolls: 100,
   maxRetries: 3,
   scrollDelay: 2000,
   detectLoadMore: true,

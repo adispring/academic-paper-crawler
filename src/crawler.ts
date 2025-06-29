@@ -151,7 +151,7 @@ export class AcademicPaperCrawler {
               title: result.title,
               authors: result.authors,
               abstract: result.abstract || '', // 使用搜索结果中的摘要（如果有）
-              paperLink: result.paperLink || result.detailUrl, // 使用论文链接或详情页链接
+              paperLink: result.detailUrl, // 快速模式下使用详情页链接作为论文链接
               searchKeyword: keyword,
               crawledAt: new Date(),
             };
@@ -492,7 +492,7 @@ export class AcademicPaperCrawler {
 
     const collectedItems = new Set<string>();
     let scrollCount = 0;
-    const maxScrolls = 50; // 固定为50次滚动
+    const maxScrolls = 100; // 固定为50次滚动
     let noNewItemsCount = 0;
     const maxNoNewRetries = scrollConfig.virtualListMaxRetries || 6;
 
@@ -997,166 +997,21 @@ export class AcademicPaperCrawler {
               }
             }
 
+            // 提取详情链接
             const linkElement = element.querySelector(
               selectors.detailLink
             ) as HTMLAnchorElement;
             const detailUrl = linkElement?.href || '';
 
-            // 尝试提取论文链接（左上角或左侧图标链接或其他位置）
-            let paperLink = '';
-
-            // 更全面的论文链接检测策略
-            const paperLinkStrategies = [
-              // 策略1: 直接查找常见的论文链接
-              () => {
-                const directSelectors = [
-                  'a[href*="pdf"]',
-                  'a[href*="doi"]',
-                  'a[href*="acm.org"]',
-                  'a[href*="dl.acm.org"]',
-                  'a[href*="arxiv"]',
-                  'a[href*="paper"]',
-                  'a[href*="download"]',
-                ];
-
-                for (const selector of directSelectors) {
-                  const linkEl = element.querySelector(
-                    selector
-                  ) as HTMLAnchorElement;
-                  if (linkEl?.href && linkEl.href !== detailUrl) {
-                    return linkEl.href;
-                  }
-                }
-                return null;
-              },
-
-              // 策略2: 查找带有特殊属性的链接
-              () => {
-                const attrSelectors = [
-                  'a[title*="PDF"]',
-                  'a[title*="paper"]',
-                  'a[title*="DOI"]',
-                  'a[title*="download"]',
-                  'a[title*="external"]',
-                  'a[target="_blank"]',
-                  'a[rel*="external"]',
-                ];
-
-                for (const selector of attrSelectors) {
-                  const linkEl = element.querySelector(
-                    selector
-                  ) as HTMLAnchorElement;
-                  if (linkEl?.href && linkEl.href !== detailUrl) {
-                    return linkEl.href;
-                  }
-                }
-                return null;
-              },
-
-              // 策略3: 查找图标链接（可能在左上角或左侧）
-              () => {
-                const iconSelectors = [
-                  'a .fa',
-                  'a .icon',
-                  'a .glyphicon',
-                  '.fa-external-link',
-                  '.fa-link',
-                  '.fa-file-pdf',
-                  '.icon-link',
-                  '.link-icon',
-                  'a.icon',
-                ];
-
-                for (const selector of iconSelectors) {
-                  const iconEl = element.querySelector(selector);
-                  if (iconEl) {
-                    const linkEl = iconEl.closest('a') as HTMLAnchorElement;
-                    if (linkEl?.href && linkEl.href !== detailUrl) {
-                      return linkEl.href;
-                    }
-                  }
-                }
-                return null;
-              },
-
-              // 策略4: 查找按钮样式的链接
-              () => {
-                const buttonSelectors = [
-                  '.btn-link',
-                  '.link-button',
-                  '.paper-link',
-                  '.external-link',
-                  '.pdf-link',
-                ];
-
-                for (const selector of buttonSelectors) {
-                  const linkEl = element.querySelector(
-                    selector
-                  ) as HTMLAnchorElement;
-                  if (linkEl?.href && linkEl.href !== detailUrl) {
-                    return linkEl.href;
-                  }
-                }
-                return null;
-              },
-
-              // 策略5: 在元素左上角或左侧查找所有链接
-              () => {
-                const allLinks = Array.from(element.querySelectorAll('a'));
-                for (const link of allLinks) {
-                  const linkEl = link as HTMLAnchorElement;
-                  if (!linkEl.href || linkEl.href === detailUrl) continue;
-
-                  // 检查链接的位置（可能在左上角或左侧）
-                  const rect = linkEl.getBoundingClientRect();
-                  const parentRect = element.getBoundingClientRect();
-
-                  // 如果链接在父元素的左上区域
-                  const isRightSide =
-                    rect.left > parentRect.left + parentRect.width * 0.7;
-                  const isTopSide =
-                    rect.top < parentRect.top + parentRect.height * 0.3;
-
-                  if (isRightSide && isTopSide) {
-                    return linkEl.href;
-                  }
-
-                  // 或者检查链接是否包含论文相关的URL模式
-                  if (
-                    /\.(pdf|doi|paper|download)/i.test(linkEl.href) ||
-                    /(acm\.org|arxiv|doi\.org)/i.test(linkEl.href)
-                  ) {
-                    return linkEl.href;
-                  }
-                }
-                return null;
-              },
-            ];
-
-            // 逐个尝试策略
-            for (let i = 0; i < paperLinkStrategies.length; i++) {
-              try {
-                const result = paperLinkStrategies[i]();
-                if (result) {
-                  paperLink = result;
-                  console.log(`策略 ${i + 1} 成功找到论文链接: ${paperLink}`);
-                  break;
-                }
-              } catch (error) {
-                console.warn(`策略 ${i + 1} 执行失败:`, error);
-              }
-            }
+            // 注意：不再在搜索结果页面中提取论文链接
+            // 论文链接将在详情页中专门收集
 
             if (title && detailUrl) {
-              const result: any = {
+              const result: SearchResultItem = {
                 title: title,
                 authors: authors,
                 detailUrl: detailUrl,
               };
-
-              if (paperLink) {
-                result.paperLink = paperLink;
-              }
 
               results.push(result);
             }
@@ -1299,17 +1154,9 @@ export class AcademicPaperCrawler {
           authors:
             result.authors.length > 0 ? result.authors : existing.authors,
           detailUrl: result.detailUrl || existing.detailUrl,
-          paperLink: result.paperLink || existing.paperLink, // 优先使用有paperLink的版本
           abstract: result.abstract || existing.abstract,
         };
         titleMap.set(titleKey, mergedResult);
-
-        // 记录合并信息
-        if (result.paperLink && !existing.paperLink) {
-          logger.info(`合并结果: ${result.title} - Browser-Use提供了论文链接`);
-        } else if (!result.paperLink && existing.paperLink) {
-          logger.info(`合并结果: ${result.title} - 传统方式提供了论文链接`);
-        }
       } else {
         // 新结果，直接添加
         titleMap.set(titleKey, result);
@@ -1395,10 +1242,11 @@ export class AcademicPaperCrawler {
         parseAuthors(paperDetail.authorsText) || searchResult.authors;
       const abstract = cleanText(paperDetail.abstract);
 
-      // 优先使用搜索结果中的论文链接，如果没有再使用详情页面提取的链接
-      const paperLink = searchResult.paperLink
-        ? searchResult.paperLink
-        : getAbsoluteUrl(searchResult.detailUrl, paperDetail.paperLink);
+      // 论文链接现在完全从详情页面提取
+      const paperLink = getAbsoluteUrl(
+        searchResult.detailUrl,
+        paperDetail.paperLink
+      );
 
       // 创建基础论文信息，优先使用详情页面的信息，但如果缺失则使用搜索结果中的信息
       let paperInfo: PaperInfo = {
@@ -1410,13 +1258,11 @@ export class AcademicPaperCrawler {
         crawledAt: new Date(),
       };
 
-      // 记录使用的论文链接来源
-      if (searchResult.paperLink) {
-        logger.info(`使用搜索结果中的论文链接: ${searchResult.paperLink}`);
-      } else if (paperDetail.paperLink) {
-        logger.info(`使用详情页面的论文链接: ${paperLink}`);
+      // 记录论文链接来源
+      if (paperDetail.paperLink) {
+        logger.info(`从详情页面获取论文链接: ${paperLink}`);
       } else {
-        logger.warn('未找到论文链接');
+        logger.warn('详情页面未找到论文链接');
       }
 
       // 检查Browser-Use模式

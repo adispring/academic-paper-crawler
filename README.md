@@ -71,82 +71,80 @@ npm run build
 
 ## 🎯 使用方法
 
-### 基础搜索
+### 1. 基础搜索
 ```bash
-# 基本搜索
+# 搜索特定关键词的论文
 npx ts-node src/index.ts search -k "machine learning"
 
-# 指定输出格式和路径
-npx ts-node src/index.ts search -k "artificial intelligence" -f json -o ./results
+# 启用AI分析
+npx ts-node src/index.ts search -k "deep learning" --ai --ai-extract
+
+# 使用Browser-Use智能提取
+npx ts-node src/index.ts search -k "neural networks" --browser-use
 ```
 
-### AI 增强搜索 🚀
+### 2. 从URL直接爬取所有文章
 ```bash
-# 启用AI分析 + 智能提取 (推荐配置)
-npx ts-node src/index.ts search -k "human-computer interaction" \
-  --ai \
-  --ai-extract-fallback
+# 爬取会议程序页面的所有文章
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all"
 
-# 高精度AI增强提取
-npx ts-node src/index.ts search -k "machine learning" \
-  --ai \
-  --ai-extract-enhance \
-  --ai-model gpt-4
+# 指定标识符用于文件命名
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" -i "FACCT2025"
 
-# 完全AI驱动提取
-npx ts-node src/index.ts search -k "deep learning" \
-  --ai \
-  --ai-extract \
-  --ai-model gpt-3.5-turbo
+# 启用AI功能爬取会议文章
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" --ai --browser-use
 ```
 
-### Browser-Use 智能操作 🤖
+### 3. 高级选项
 ```bash
-# 启用Browser-Use混合模式 (推荐)
-npx ts-node src/index.ts search -k "virtual reality" \
-  --browser-use \
-  --browser-use-mode hybrid \
-  --ai
+# 快速模式（跳过详情页提取）
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" --disable-detail-extraction
 
-# Browser-Use专用模式 (复杂网站)
-npx ts-node src/index.ts search -k "augmented reality" \
-  --browser-use \
-  --browser-use-mode browser-use-only \
-  --ai-model gpt-4
-
-# 测试Browser-Use功能
-npx ts-node test-browser-use.ts
+# 自定义输出格式和路径
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" -f json -o ./my-output
 ```
 
-### 快速模式搜索 ⚡
+## 📋 命令参考
+
+### search 命令
+基于关键词搜索论文：
+- `-k, --keyword <keyword>`: 搜索关键词 **(必需)**
+- `-o, --output <path>`: 输出目录路径 (默认: ./output)  
+- `-f, --format <format>`: 输出格式 csv|json (默认: csv)
+
+### crawl-url 命令  
+从指定URL爬取所有论文（适用于会议程序页面）：
+- `-u, --url <url>`: 目标URL **(必需)**
+- `-i, --identifier <identifier>`: 标识符用于文件命名 (默认: ALL_ARTICLES)
+- `-o, --output <path>`: 输出目录路径 (默认: ./output)
+- `-f, --format <format>`: 输出格式 csv|json (默认: csv)
+
+### 通用选项
+- `--headless <headless>`: 是否使用无头模式 (默认: true)
+- `--timeout <timeout>`: 超时时间毫秒 (默认: 60000)
+- `--ai`: 启用AI分析功能
+- `--ai-extract`: 启用AI辅助信息提取
+- `--browser-use`: 启用Browser-Use智能浏览器操作
+- `--disable-detail-extraction`: 禁用详情页提取（快速模式）
+
+## 🎯 使用场景
+
+### 场景1：学术研究关键词搜索
+当您需要搜索特定主题的论文时：
 ```bash
-# 快速模式：跳过详情页提取，适合测试和批量筛选
-npx ts-node src/index.ts search -k "computer vision" \
-  --disable-detail-extraction \
-  --ai
-
-# 功能测试：验证收集逻辑
-npx tsx test-paper-collection.ts "https://dblp.org/search?q=machine+learning"
-
-# 大批量快速收集标题和作者信息
-npx ts-node src/index.ts batch -f keywords.txt \
-  --disable-detail-extraction \
-  --ai-extract-fallback
+npx ts-node src/index.ts search -k "bias in AI" --ai --browser-use
 ```
 
-### 批量处理
+### 场景2：会议论文全量收集
+当您需要收集整个会议的所有论文时：
 ```bash
-# 创建关键词文件
-echo "machine learning
-deep learning
-neural networks
-computer vision" > keywords.txt
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" -i "FACCT2025" --ai
+```
 
-# 批量搜索 + AI分析
-npx ts-node src/index.ts batch -f keywords.txt \
-  --ai \
-  --ai-extract-fallback \
-  --delay 3000
+### 场景3：快速批量处理
+当您需要快速处理大量论文时（跳过详情页提取）：
+```bash
+npx ts-node src/index.ts crawl-url -u "https://programs.sigchi.org/facct/2025/program/all" --disable-detail-extraction
 ```
 
 ## 🎛️ 配置选项

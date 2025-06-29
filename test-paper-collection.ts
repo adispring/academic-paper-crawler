@@ -2,6 +2,8 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import { createBrowserUseAgent } from './src/ai/browser-use';
 import { defaultAIConfig } from './src/config';
 import { logger } from './src/utils';
+import { CrawlerConfig } from './src/types';
+import { AcademicPaperCrawler } from './src/crawler';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -97,7 +99,10 @@ class PaperCollectionTester {
   /**
    * 执行论文收集测试
    */
-  async testPaperCollection(searchKeyword: string): Promise<{
+  async testPaperCollection(
+    testUrl: string,
+    searchKeyword?: string
+  ): Promise<{
     expectedCount: number;
     actualCount: number;
     collectionRate: number;
@@ -107,15 +112,46 @@ class PaperCollectionTester {
     if (!this.page) throw new Error('页面未初始化');
 
     logger.info(`\n🧪 开始测试论文收集功能`);
-    logger.info(`🔍 搜索关键词: ${searchKeyword}`);
+
+    // 判断是否为搜索页面还是直接访问的会议程序页面
+    const isSearchMode = !!searchKeyword;
+    const displayKeyword = searchKeyword;
+
+    if (isSearchMode) {
+      logger.info(`🔍 搜索关键词: ${searchKeyword}`);
+    } else {
+      logger.info(`📋 会议程序页面模式`);
+    }
 
     const startTime = Date.now();
 
-    // 执行收集
-    const results = await this.browserUseAgent.extractSearchResults(
-      this.page,
-      searchKeyword
-    );
+    // 创建爬虫实例并执行收集
+    const config: Partial<CrawlerConfig> = {
+      outputPath: './output',
+      outputFormat: 'json',
+      headless: true,
+      timeout: 30000,
+      aiConfig: {
+        enabled: true,
+        model: 'gpt-4o-mini',
+        apiKey: process.env.OPENAI_API_KEY,
+        baseURL: process.env.OPENAI_BASE_URL,
+        temperature: 0.2,
+        maxTokens: 1500,
+        analysisTypes: ['summarize' as any],
+        useBrowserUse: true,
+        browserUseMode: 'hybrid',
+        enableExtraction: true,
+        extractionMode: 'fallback',
+        enableDetailExtraction: false, // 测试时不提取详情页，加速测试
+      },
+    };
+
+    const crawler = new AcademicPaperCrawler(config);
+
+    let results: any[];
+    // 使用传统搜索模式
+    results = await crawler.searchPapers(searchKeyword!);
 
     const endTime = Date.now();
     const duration = Math.round((endTime - startTime) / 1000);
@@ -134,7 +170,7 @@ class PaperCollectionTester {
       papers: results.map((paper: any) => ({
         title: paper.title,
         authors: paper.authors,
-        detailUrl: paper.detailUrl,
+        detailUrl: paper.detailUrl || paper.paperLink,
       })),
     };
 
@@ -280,16 +316,20 @@ async function runTest() {
       throw new Error('测试URL是必需的');
     }
 
-    const searchKeyword = process.env.SEARCH_KEYWORD || 'test'; // 测试关键词
+    const searchKeyword = process.env.SEARCH_KEYWORD; // 搜索关键词（可选）
 
     logger.info(`🔗 测试URL: ${testUrl}`);
-    logger.info(`🔍 搜索关键词: ${searchKeyword}`);
+    if (searchKeyword) {
+      logger.info(`🔍 搜索关键词: ${searchKeyword}`);
+    } else {
+      logger.info(`📋 会议程序页面模式（无关键词搜索）`);
+    }
 
     // 导航到页面
     await tester.navigateToSearchResults(testUrl);
 
     // 执行测试
-    const result = await tester.testPaperCollection(searchKeyword);
+    const result = await tester.testPaperCollection(testUrl, searchKeyword);
 
     // 显示详细结果
     tester.displayDetailedResults(result);

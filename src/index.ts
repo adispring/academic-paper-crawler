@@ -6,7 +6,7 @@ import { Command } from 'commander';
 // 加载环境变量
 dotenv.config();
 import { AcademicPaperCrawler } from './crawler';
-import { CrawlerConfig, ScrollConfig } from './types';
+import { CrawlerConfig, ScrollConfig, AIAnalysisType } from './types';
 import { logger } from './utils';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -70,7 +70,7 @@ class PaperCrawlerApp {
         'non-chinese-only'
       )
       .option('--no-scroll', '禁用滚动加载功能（仅获取首屏结果）')
-      .option('--max-scrolls <count>', '最大滚动次数', '20')
+      .option('--max-scrolls <count>', '最大滚动次数', '100')
       .option('--scroll-delay <ms>', '滚动延迟时间(毫秒)', '2000')
       .option('--no-human-scroll', '禁用人类式滚动，使用传统快速滚动')
       .option(
@@ -137,7 +137,7 @@ class PaperCrawlerApp {
         'non-chinese-only'
       )
       .option('--no-scroll', '禁用滚动加载功能（仅获取首屏结果）')
-      .option('--max-scrolls <count>', '最大滚动次数', '20')
+      .option('--max-scrolls <count>', '最大滚动次数', '100')
       .option('--scroll-delay <ms>', '滚动延迟时间(毫秒)', '2000')
       .option('--no-human-scroll', '禁用人类式滚动，使用传统快速滚动')
       .option(
@@ -616,7 +616,7 @@ class PaperCrawlerApp {
 
     return {
       enabled: !options.noScroll,
-      maxScrolls: parseInt(options.maxScrolls || '50'),
+      maxScrolls: parseInt(options.maxScrolls || '100'),
       maxRetries: 3,
       scrollDelay: parseInt(options.scrollDelay || '2000'),
       detectLoadMore: true,
