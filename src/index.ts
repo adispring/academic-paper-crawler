@@ -91,7 +91,7 @@ class PaperCrawlerApp {
       .option(
         '--virtual-list-threshold <threshold>',
         '虚拟列表收集完成阈值 (0-1)',
-        '0.85'
+        '1'
       )
       .action(async (options) => {
         await this.handleSearchCommand(options);
@@ -158,7 +158,7 @@ class PaperCrawlerApp {
       .option(
         '--virtual-list-threshold <threshold>',
         '虚拟列表收集完成阈值 (0-1)',
-        '0.85'
+        '1'
       )
       .action(async (options) => {
         await this.handleBatchCommand(options);
@@ -633,7 +633,7 @@ class PaperCrawlerApp {
       virtualListScrollDelay: parseInt(options.virtualListDelay || '3500'),
       virtualListMaxRetries: parseInt(options.virtualListMaxRetries || '6'),
       virtualListCollectionThreshold: parseFloat(
-        options.virtualListThreshold || '0.85'
+        options.virtualListThreshold || '1'
       ),
     };
   }

@@ -26,7 +26,7 @@ export const defaultScrollConfig: ScrollConfig = {
   virtualListOptimization: true, // 默认启用虚拟列表优化
   virtualListScrollDelay: 3500, // 虚拟列表滚动后等待3.5秒
   virtualListMaxRetries: 6, // 虚拟列表最大重试6次
-  virtualListCollectionThreshold: 0.85, // 收集到85%即可结束
+  virtualListCollectionThreshold: 1, // 收集到100%即可结束
 };
 
 /**
